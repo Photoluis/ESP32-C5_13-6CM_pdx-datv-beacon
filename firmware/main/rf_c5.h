@@ -16,3 +16,15 @@ unsigned pdx_rf_mhz(void);
 /* cattura n parole (coppie I/Q) nel banco; div = divisore della frequenza di campionamento (0 = massima);
  * restituisce il numero di parole scritte (sentinella sovrascritta) e la durata in us */
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us);
+
+/* ---- P2c: prove di trasmissione (solo con TXARM, impulsi <= 2 s) ---- */
+#define PDX_TX_MS_MAX 2000u
+#define PDX_DAC_AMP_MAX 300
+/* parola DAC come S3/C3 (da confermare sul C5): I bit 0..9, Q bit 10..19, complemento a due */
+static inline uint32_t pdx_dac_word(int i, int q) { return ((uint32_t)i & 0x3FFu) | (((uint32_t)q & 0x3FFu) << 10); }
+/* portante di riferimento: generatore di tono della libreria (esp_phy_wifi_tx_tone), backoff in 0,25 dB */
+void pdx_rf_ref_tone(unsigned backoff, unsigned ms);
+/* prova del replay: registro di controllo candidato (DUMP_BASE + off), valore di avvio val (bit31 aggiunto),
+ * parola I=amp (tone_khz = 0) oppure tono complesso a +tone_khz scritto dalla CPU a fs_khz. Riporta le riletture. */
+typedef struct { uint32_t owner_before, ctrl_before, ctrl_running, ctrl_after, samples, dump4, dump8; } pdx_dacp_res_t;
+void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigned fs_khz, unsigned ms, pdx_dacp_res_t *r);

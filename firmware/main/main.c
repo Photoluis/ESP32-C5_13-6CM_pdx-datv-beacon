@@ -1,5 +1,10 @@
 /* ESP32-C5 Dual-Band DATV - IZ7PDX - GPL-3.0
- * Firmware di prova P2b: identificazione, commutatore d'antenna e cattura RX. NESSUN comando trasmette.
+ * Firmware di prova P2c: identificazione, commutatore d'antenna, cattura RX e prove di trasmissione.
+ * I comandi che trasmettono (REFTONE, DACP) funzionano solo dopo TXARM; ogni impulso dura al massimo 2 s;
+ * TXSAFE (o il riavvio) li disabilita di nuovo.
+ *   TXARM / TXSAFE     abilita / disabilita i comandi che trasmettono
+ *   REFTONE <backoff> <ms>                    portante della libreria sulla frequenza FREQ (backoff 0,25 dB)
+ *   DACP <off_hex> <val_hex> <amp> <tone_khz> <ms>   prova del replay del DAC (registro 0x600A9000+off)
  *
  * Comandi (USB Serial/JTAG, una riga ciascuno):
  *   INFO               chip, memoria, registri del motore di cattura
@@ -23,7 +28,9 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2b-RX"
+#define FW_VERSION "C5-P2c-TXPROBE"
+
+static bool tx_armed;
 
 extern int _bss_end, _data_end, _iram_end;
 
@@ -33,8 +40,8 @@ static void cmd_info(void)
 {
     esp_chip_info_t ci;
     esp_chip_info(&ci);
-    uint8_t mac[6];
-    esp_efuse_mac_get_default(mac);
+    uint8_t mac[8] = {0};
+    esp_read_mac(mac, ESP_MAC_BASE);
     printf("FW %s  chip model %d rev %d cores %d  MAC %02x:%02x:%02x:%02x:%02x:%02x\n", FW_VERSION, ci.model,
            ci.revision, ci.cores, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     printf("heap libero %u  min %u  _iram_end %p  _data_end %p  _bss_end %p  (limite 0x40820000)\n",
@@ -115,6 +122,31 @@ void app_main(void)
         else if (!strcmp(cmd, "FREQ") && k >= 2) printf(pdx_rf_tune(a) ? "OK freq %u\n" : "ERR freq %u\n", a);
         else if (!strcmp(cmd, "RXCAP") && k >= 2) cmd_rxcap(a, k >= 3 ? b : 0);
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
+        else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
+        else if (!strcmp(cmd, "TXSAFE")) { tx_armed = false; printf("OK txsafe\n"); }
+        else if (!strcmp(cmd, "REFTONE") || !strcmp(cmd, "DACP")) {
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            if (!strcmp(cmd, "REFTONE")) {
+                if (k < 3) { printf("ERR uso: REFTONE <backoff> <ms>\n"); continue; }
+                printf("TX REFTONE %u MHz backoff %u ms %u\n", pdx_rf_mhz(), a, b);
+                pdx_rf_ref_tone(a, b);
+                printf("OK reftone\n");
+            } else {
+                unsigned off, val, ms;
+                int amp, tkhz;
+                if (sscanf(p, "%*s %x %x %d %d %u", &off, &val, &amp, &tkhz, &ms) != 5) {
+                    printf("ERR uso: DACP <off_hex> <val_hex> <amp> <tone_khz> <ms>\n");
+                    continue;
+                }
+                printf("TX DACP %u MHz reg 0x%08x val 0x%08x amp %d tono %d kHz ms %u\n", pdx_rf_mhz(),
+                       (unsigned)(PDX_C5_DUMP_BASE + (off & 0xFFCu)), val, amp, tkhz, ms);
+                pdx_dacp_res_t r;
+                pdx_rf_dac_probe(off, val, amp, tkhz, 1000, ms, &r);
+                printf("owner prima %08" PRIx32 " ctrl prima %08" PRIx32 " in corsa %08" PRIx32 " dopo %08" PRIx32
+                       " DUMP+4 %08" PRIx32 " +8 %08" PRIx32 " campioni %" PRIu32 "\nOK dacp\n",
+                       r.owner_before, r.ctrl_before, r.ctrl_running, r.ctrl_after, r.dump4, r.dump8, r.samples);
+            }
+        }
         else if (!strcmp(cmd, "REG")) {
             uint32_t addr = (uint32_t)strtoul(p + 3, NULL, 16);
             if ((addr >> 20) == 0x600 || (addr >> 20) == 0x408) printf("OK reg %08" PRIx32 " = %08" PRIx32 "\n", addr, rd(addr & ~3u));

@@ -82,6 +82,89 @@ bool pdx_rf_tune(unsigned mhz)
 
 unsigned pdx_rf_mhz(void) { return cur_mhz; }
 
+/* ------------------------------------------------------------------ P2c: trasmissione di prova */
+#include <math.h>
+#include "esp_cpu.h"
+#include "esp_phy_cert_test.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
+extern void force_txon(int on);
+extern void phy_txcal_work_mode(void);
+
+void pdx_rf_ref_tone(unsigned backoff, unsigned ms)
+{
+    if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
+    const unsigned mhz = cur_mhz;
+    esp_phy_wifi_tx_tone(1, 1, backoff);          /* tono sul canale 1 ... */
+    if (mhz != 2412) phy_set_chanfreq(mhz, 0);    /* ... poi PLL spostato sulla frequenza scelta */
+    vTaskDelay(pdMS_TO_TICKS(ms));
+    esp_phy_wifi_tx_tone(0, 1, 0);
+    pdx_rf_tune(mhz);
+}
+
+#define TONE_LUT 256u
+static int16_t tone_cos[TONE_LUT];
+
+static IRAM_ATTR __attribute__((noinline)) uint32_t dac_tone_loop(uint32_t step, uint32_t period, uint32_t n)
+{
+    uint32_t ph = 0, s;
+    uint32_t tn = esp_cpu_get_cycle_count() + 1000u;
+    for (s = 0; s < n; s++) {
+        const uint32_t idx = ph >> 24;
+        const uint32_t w = pdx_dac_word(tone_cos[idx], tone_cos[(idx - TONE_LUT / 4u) & (TONE_LUT - 1u)]);
+        ph += step;
+        while ((int32_t)(esp_cpu_get_cycle_count() - tn) < 0) {}
+        PDX_C5_BANK[0] = w;
+        tn += period;
+    }
+    return s;
+}
+
+void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigned fs_khz, unsigned ms, pdx_dacp_res_t *r)
+{
+    if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
+    if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
+    if (amp < -PDX_DAC_AMP_MAX) amp = -PDX_DAC_AMP_MAX;
+    if (fs_khz < 100 || fs_khz > 4000) fs_khz = 1000;
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + (off & 0xFFCu);
+    for (unsigned k = 0; k < TONE_LUT; k++) tone_cos[k] = (int16_t)lroundf(amp * cosf(6.2831853f * k / TONE_LUT));
+    const uint32_t w0 = pdx_dac_word(amp, 0);
+    for (unsigned j = 0; j < 16; j++) PDX_C5_BANK[j] = w0;
+
+    r->owner_before = rd(PDX_C5_SRAM_OWNER);
+    r->ctrl_before = rd(ctrl);
+    force_txon(1);
+    esp_rom_delay_us(3000);
+    wr(PDX_C5_SRAM_OWNER, (r->owner_before & ~0xF00u) | 0x200u | 0x10000u);   /* banco 1 + 64 KB -> 0x40830000 */
+    wr(ctrl, r->ctrl_before & ~(1u << 31));
+    wr(ctrl, val & ~(1u << 31));
+    wr(ctrl, val | (1u << 31));
+    esp_rom_delay_us(50);
+    r->ctrl_running = rd(ctrl);
+    r->dump4 = rd(PDX_C5_DUMP_BASE + 4);
+    r->dump8 = rd(PDX_C5_DUMP_BASE + 8);
+    r->samples = 0;
+    if (tone_khz) {
+        const uint32_t step = (uint32_t)(int32_t)llround((double)tone_khz * 4294967296.0 / fs_khz);
+        const uint32_t period = 240000u / fs_khz;
+        static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+        taskENTER_CRITICAL(&mux);                      /* un solo core: interrupt mascherati durante il tono */
+        r->samples = dac_tone_loop(step, period, ms * fs_khz);
+        taskEXIT_CRITICAL(&mux);
+    } else {
+        vTaskDelay(pdMS_TO_TICKS(ms));
+    }
+    for (unsigned j = 0; j < 16; j++) PDX_C5_BANK[j] = 0;
+    wr(ctrl, rd(ctrl) & ~(1u << 31));
+    wr(ctrl, r->ctrl_before);
+    r->ctrl_after = rd(ctrl);
+    wr(PDX_C5_SRAM_OWNER, r->owner_before);
+    force_txon(0);
+    phy_txcal_work_mode();
+    pdx_rf_tune(cur_mhz);
+}
+
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)
 {
     if (n < 16) n = 16;
