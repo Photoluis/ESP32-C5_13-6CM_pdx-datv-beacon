@@ -26,3 +26,6 @@ __pycache__/
 # sistema
 .DS_Store
 Thumbs.db
+
+# catture di prova
+tools/out/
