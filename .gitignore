@@ -1,0 +1,28 @@
+# ESP32-C5 Dual-Band DATV IZ7PDX
+
+# riferimenti di terze parti (non ridistribuibili)
+ref/
+
+# firmware ESP-IDF
+firmware/build/
+firmware/build_*/
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/*.log
+
+# strumenti PC
+tools/.venv/
+tools/out/
+__pycache__/
+*.pyc
+
+# backup della flash, file personali, release
+*.flash.bin
+/media/
+/release/
+
+# sistema
+.DS_Store
+Thumbs.db
