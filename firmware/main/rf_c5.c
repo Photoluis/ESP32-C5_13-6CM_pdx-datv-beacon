@@ -165,6 +165,61 @@ void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigne
     pdx_rf_tune(cur_mhz);
 }
 
+static void replay_run(uint32_t off, uint32_t val, unsigned ms, pdx_dacp_res_t *r)
+{
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + (off & 0xFFCu);
+    r->owner_before = rd(PDX_C5_SRAM_OWNER);
+    r->ctrl_before = rd(ctrl);
+    force_txon(1);
+    esp_rom_delay_us(3000);
+    wr(PDX_C5_SRAM_OWNER, (r->owner_before & ~0xF00u) | 0x200u | 0x10000u);
+    wr(ctrl, r->ctrl_before & ~(1u << 31));
+    wr(ctrl, val & ~(1u << 31));
+    wr(ctrl, val | (1u << 31));
+    esp_rom_delay_us(50);
+    r->ctrl_running = rd(ctrl);
+    r->dump4 = rd(PDX_C5_DUMP_BASE + 4);
+    r->dump8 = rd(PDX_C5_DUMP_BASE + 8);
+    r->samples = 0;
+    vTaskDelay(pdMS_TO_TICKS(ms));
+    wr(ctrl, rd(ctrl) & ~(1u << 31));
+    wr(ctrl, r->ctrl_before);
+    r->ctrl_after = rd(ctrl);
+    wr(PDX_C5_SRAM_OWNER, r->owner_before);
+    force_txon(0);
+    phy_txcal_work_mode();
+    pdx_rf_tune(cur_mhz);
+}
+
+void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, unsigned ms, pdx_dacp_res_t *r)
+{
+    if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
+    if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
+    if (n < 1) n = 1;
+    if (n > PDX_C5_BANK_WORDS) n = PDX_C5_BANK_WORDS;
+    for (unsigned j = 0; j < n; j++) {
+        const float ph = 6.2831853f * (float)k * (float)j / (float)n;
+        PDX_C5_BANK[j] = pdx_dac_word((int)lroundf(amp * cosf(ph)), (int)lroundf(amp * sinf(ph)));
+    }
+    for (unsigned j = n; j < n + 4 && j < PDX_C5_BANK_WORDS; j++) PDX_C5_BANK[j] = 0;
+    replay_run(off, val, ms, r);
+    for (unsigned j = 0; j < n; j++) PDX_C5_BANK[j] = 0;
+}
+
+void pdx_rf_owner_test(uint32_t out[4])
+{
+    const uint32_t owner = rd(PDX_C5_SRAM_OWNER);
+    PDX_C5_BANK[0] = 0x11111111u;
+    wr(PDX_C5_SRAM_OWNER, (owner & ~0xF00u) | 0x200u | 0x10000u);
+    out[2] = PDX_C5_BANK[0];          /* lettura col banco al motore (prima di scrivere) */
+    PDX_C5_BANK[0] = 0x22222222u;     /* scrittura col banco al motore */
+    out[0] = PDX_C5_BANK[0];
+    wr(PDX_C5_SRAM_OWNER, owner);
+    out[1] = PDX_C5_BANK[0];          /* 0x22222222 = scrittura arrivata, 0x11111111 = persa */
+    out[3] = rd(PDX_C5_SRAM_OWNER);
+    PDX_C5_BANK[0] = 0;
+}
+
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)
 {
     if (n < 16) n = 16;

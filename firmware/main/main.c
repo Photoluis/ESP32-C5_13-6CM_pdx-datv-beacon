@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2c-TXPROBE"
+#define FW_VERSION "C5-P2d-TXPAT"
 
 static bool tx_armed;
 
@@ -124,6 +124,27 @@ void app_main(void)
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
         else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
         else if (!strcmp(cmd, "TXSAFE")) { tx_armed = false; printf("OK txsafe\n"); }
+        else if (!strcmp(cmd, "OWNTEST")) {
+            uint32_t o[4];
+            pdx_rf_owner_test(o);
+            printf("OK owntest letto_col_motore %08" PRIx32 " dopo_scrittura %08" PRIx32 " dopo_rilascio %08" PRIx32
+                   " owner %08" PRIx32 " (22222222 = scrittura arrivata, 11111111 = persa)\n", o[2], o[0], o[1], o[3]);
+        }
+        else if (!strcmp(cmd, "DACPAT")) {
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned off, val, n, ms;
+            int amp, kk;
+            if (sscanf(p, "%*s %x %x %d %u %d %u", &off, &val, &amp, &n, &kk, &ms) != 6) {
+                printf("ERR uso: DACPAT <off_hex> <val_hex> <amp> <n> <k> <ms>\n");
+                continue;
+            }
+            printf("TX DACPAT %u MHz reg 0x%08x val 0x%08x amp %d n %u k %d ms %u\n", pdx_rf_mhz(),
+                   (unsigned)(PDX_C5_DUMP_BASE + (off & 0xFFCu)), val, amp, n, kk, ms);
+            pdx_dacp_res_t r;
+            pdx_rf_dac_pattern(off, val, amp, n, kk, ms, &r);
+            printf("ctrl prima %08" PRIx32 " in corsa %08" PRIx32 " dopo %08" PRIx32 " DUMP+4 %08" PRIx32 " +8 %08" PRIx32
+                   "\nOK dacpat\n", r.ctrl_before, r.ctrl_running, r.ctrl_after, r.dump4, r.dump8);
+        }
         else if (!strcmp(cmd, "REFTONE") || !strcmp(cmd, "DACP")) {
             if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
             if (!strcmp(cmd, "REFTONE")) {

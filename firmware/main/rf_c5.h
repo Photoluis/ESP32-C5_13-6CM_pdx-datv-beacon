@@ -28,3 +28,7 @@ void pdx_rf_ref_tone(unsigned backoff, unsigned ms);
  * parola I=amp (tone_khz = 0) oppure tono complesso a +tone_khz scritto dalla CPU a fs_khz. Riporta le riletture. */
 typedef struct { uint32_t owner_before, ctrl_before, ctrl_running, ctrl_after, samples, dump4, dump8; } pdx_dacp_res_t;
 void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigned fs_khz, unsigned ms, pdx_dacp_res_t *r);
+/* banco precaricato con n parole = k periodi di un tono complesso (k > 0: sopra l'LO), poi replay come sopra */
+void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, unsigned ms, pdx_dacp_res_t *r);
+/* senza TX: la CPU legge/scrive il banco mentre è assegnato al motore? out[0] letto col motore, out[1] dopo */
+void pdx_rf_owner_test(uint32_t out[4]);
