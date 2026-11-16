@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2e-DPAT"
+#define FW_VERSION "C5-P2f-PP"
 
 static bool tx_armed;
 
@@ -106,6 +106,7 @@ void app_main(void)
     gpio_set_level(PDX_C5_ANT_GPIO, 0);   /* stato di riposo della scheda (pull-down R17) */
 
     pdx_rf_init();
+    pdx_rf_pp_init();
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 
     char line[96];
@@ -124,6 +125,21 @@ void app_main(void)
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
         else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
         else if (!strcmp(cmd, "TXSAFE")) { tx_armed = false; printf("OK txsafe\n"); }
+        else if (!strcmp(cmd, "HEAPINFO")) {
+            heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+            printf("OK heapinfo\n");
+        }
+        else if (!strcmp(cmd, "PP")) {
+            /* PP <mode 0=A 1=B 2=alterna> <ms> <period_us> <alloc 0/1> */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned m, ms, per, al;
+            if (sscanf(p, "%*s %u %u %u %u", &m, &ms, &per, &al) != 4) { printf("ERR uso: PP <mode> <ms> <period_us> <alloc>\n"); continue; }
+            printf("TX PP %u MHz mode %u ms %u periodo %u us alloc %u\n", pdx_rf_mhz(), m, ms, per, al);
+            pdx_pp_res_t r;
+            pdx_rf_pp(m, ms, per, al, &r);
+            printf("owner A %08" PRIx32 " B %08" PRIx32 " ctrl in corsa %08" PRIx32 " fine %08" PRIx32 " scambi %" PRIu32 "\nOK pp\n",
+                   r.owner_a, r.owner_b, r.ctrl_running, r.ctrl_end, r.switches);
+        }
         else if (!strcmp(cmd, "DPAT")) {
             /* DPAT <reg_off_hex> <and_hex> <or_hex> <amp> <n> <k> <ms>: come DACPAT, con un registro del blocco
              * 0x600A9xxx modificato (v = (v & and) | or) solo durante l'impulso e poi ripristinato */

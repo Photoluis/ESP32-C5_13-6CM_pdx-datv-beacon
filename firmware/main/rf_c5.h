@@ -32,3 +32,12 @@ void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigne
 void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, unsigned ms, pdx_dacp_res_t *r);
 /* senza TX: la CPU legge/scrive il banco mentre è assegnato al motore? out[0] letto col motore, out[1] dopo */
 void pdx_rf_owner_test(uint32_t out[4]);
+
+/* ---- P2f: ping-pong tra due banchi (senza offset +64 KB): A = 0x40820000 (banco 1), B = 0x40840000 (banco 2) ----
+ * A riempito con k=+16, B con k=-16 (n=1600 parole); 0x40830000 con k=+32 (diagnosi dell'indirizzo).
+ * mode 0: proprietario sempre A; 1: sempre B; 2: alterna A/B ogni period_us. ALLOC = bit16 di SRAM_USAGE (0 o 1). */
+#define PDX_PP_A ((volatile uint32_t *)0x40820000u)
+#define PDX_PP_B ((volatile uint32_t *)0x40840000u)
+typedef struct { uint32_t switches, ctrl_running, ctrl_end, owner_a, owner_b; } pdx_pp_res_t;
+void pdx_rf_pp_init(void);   /* crea il task con lo stack statico nel banco 0 */
+void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r);

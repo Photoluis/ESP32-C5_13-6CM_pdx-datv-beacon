@@ -220,6 +220,96 @@ void pdx_rf_owner_test(uint32_t out[4])
     PDX_C5_BANK[0] = 0;
 }
 
+/* ------------------------------------------------------------------ P2f: ping-pong */
+SOC_RESERVE_MEMORY_REGION(0x40840000, 0x40850000, c5_rf_bank2_lo);
+
+typedef struct { unsigned mode, ms, period_us, alloc; pdx_pp_res_t *r; TaskHandle_t caller; } pp_req_t;
+static pp_req_t pp_req;
+static TaskHandle_t pp_task;
+static StaticTask_t pp_tcb;
+static StackType_t pp_stack[3072];          /* .bss nel banco 0: mai dentro i banchi dati alla radio */
+
+static void fill_tone(volatile uint32_t *dst, unsigned n, int k, int amp)
+{
+    for (unsigned j = 0; j < n; j++) {
+        const float ph = 6.2831853f * (float)k * (float)j / (float)n;
+        dst[j] = pdx_dac_word((int)lroundf(amp * cosf(ph)), (int)lroundf(amp * sinf(ph)));
+    }
+}
+
+/* alternanza del proprietario: solo registri e contatore di cicli (niente ROM, niente stack fuori dal banco 0) */
+static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_t ob, uint32_t mode, uint32_t period,
+                                                            uint32_t total)
+{
+    volatile uint32_t *own = (volatile uint32_t *)PDX_C5_SRAM_OWNER;
+    const uint32_t t0 = esp_cpu_get_cycle_count();
+    uint32_t tn = t0 + period, sw = 0, cur = (mode == 1) ? ob : oa;
+    *own = cur;
+    while ((uint32_t)(esp_cpu_get_cycle_count() - t0) < total) {
+        if (mode == 2 && (int32_t)(esp_cpu_get_cycle_count() - tn) >= 0) {
+            cur = (cur == oa) ? ob : oa;
+            *own = cur;
+            tn += period;
+            sw++;
+        }
+    }
+    return sw;
+}
+
+static void pp_task_fn(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        pp_req_t *q = &pp_req;
+        static pdx_pp_res_t res;   /* nel banco 0: il chiamante puo' avere lo stack nel banco 2 */
+        pdx_pp_res_t *r = &res;
+        const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
+        const uint32_t owner0 = rd(PDX_C5_SRAM_OWNER), ctrl0 = rd(ctrl);
+        const uint32_t base = owner0 & ~0x10F00u;
+        r->owner_a = base | 0x200u | (q->alloc ? 0x10000u : 0);
+        r->owner_b = base | 0x400u | (q->alloc ? 0x10000u : 0);
+        force_txon(1);
+        esp_rom_delay_us(3000);
+        static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+        taskENTER_CRITICAL(&mux);
+        wr(PDX_C5_SRAM_OWNER, q->mode == 1 ? r->owner_b : r->owner_a);
+        wr(ctrl, ctrl0 & ~(1u << 31));
+        wr(ctrl, 0x80000u | 1600u);
+        wr(ctrl, 0x80000u | 1600u | (1u << 31));
+        r->ctrl_running = rd(ctrl);
+        r->switches = pp_loop(r->owner_a, r->owner_b, q->mode, q->period_us * 240u, q->ms * 240000u);
+        r->ctrl_end = rd(ctrl);
+        wr(ctrl, rd(ctrl) & ~(1u << 31));
+        wr(ctrl, ctrl0);
+        wr(PDX_C5_SRAM_OWNER, owner0);
+        taskEXIT_CRITICAL(&mux);
+        force_txon(0);
+        phy_txcal_work_mode();
+        pdx_rf_tune(cur_mhz);
+        *q->r = res;
+        xTaskNotifyGive(q->caller);
+    }
+}
+
+void pdx_rf_pp_init(void)
+{
+    pp_task = xTaskCreateStatic(pp_task_fn, "pp", sizeof pp_stack / sizeof pp_stack[0], NULL, 5, pp_stack, &pp_tcb);
+}
+
+void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r)
+{
+    if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
+    if (period_us < 20) period_us = 20;
+    fill_tone(PDX_PP_A, 1600, 16, 200);
+    fill_tone(PDX_C5_BANK, 1600, 32, 200);      /* 0x40830000 = A + 64 KB */
+    fill_tone(PDX_PP_B, 1600, -16, 200);
+    pp_req = (pp_req_t){.mode = mode, .ms = ms, .period_us = period_us, .alloc = alloc, .r = r,
+                        .caller = xTaskGetCurrentTaskHandle()};
+    xTaskNotifyGive(pp_task);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+}
+
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)
 {
     if (n < 16) n = 16;
