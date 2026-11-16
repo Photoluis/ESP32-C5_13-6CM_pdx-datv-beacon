@@ -326,16 +326,42 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
  * Contenuto del banco dell'intervallo j: indice i < N/2 -> campione (j+1)N + i; i >= N/2 -> campione jN + i.
  * Il flusso è un tono di periodo L campioni (tabella stream_tab), quindi campione s -> stream_tab[s mod L]. */
 #define STREAM_L_MAX 256u
-static uint32_t stream_tab[STREAM_L_MAX];
+static uint32_t stream_tab[2 * STREAM_L_MAX];
 static pdx_stream_res_t stream_res;
+
+/* copia a tratti contigui: la tabella è lunga 2L (tono ripetuto due volte), quindi da qualunque k si possono copiare
+ * L parole senza controllare la fine; ciclo interno srotolato x4 senza volatile */
+static IRAM_ATTR __attribute__((noinline)) void copy_run(uint32_t *d, const uint32_t *s, uint32_t cnt)
+{
+    while (cnt >= 4) {
+        const uint32_t a = s[0], b = s[1], c = s[2], e = s[3];
+        d[0] = a; d[1] = b; d[2] = c; d[3] = e;
+        d += 4; s += 4; cnt -= 4;
+    }
+    while (cnt--) *d++ = *s++;
+}
+
+static IRAM_ATTR __attribute__((noinline)) void fill_part(uint32_t *d, uint32_t cnt, uint32_t k, uint32_t l)
+{
+    while (cnt) {
+        const uint32_t run = cnt < l ? cnt : l;
+        copy_run(d, &stream_tab[k], run);      /* k < l, run <= l: entro 2L */
+        d += run;
+        cnt -= run;
+        k += run;
+        if (k >= l) k -= l;
+    }
+}
 
 static IRAM_ATTR __attribute__((noinline)) void stream_fill(volatile uint32_t *dst, int32_t j, uint32_t n, uint32_t l)
 {
     const uint32_t h = n / 2u;
-    uint32_t k = (uint32_t)((int64_t)(j + 1) * n % l);          /* indice i = 0 -> campione (j+1)N */
-    for (uint32_t i = 0; i < h; i++) { dst[i] = stream_tab[k]; if (++k == l) k = 0; }
-    k = (uint32_t)(((int64_t)j * n + h) % l + l) % l;            /* indice i = N/2 -> campione jN + N/2 */
-    for (uint32_t i = h; i < n; i++) { dst[i] = stream_tab[k]; if (++k == l) k = 0; }
+    uint32_t *d = (uint32_t *)dst;
+    const int32_t sl = (int32_t)l;
+    const int32_t k1 = (int32_t)(((j + 1) % sl) * (int32_t)(n % l) % sl);           /* (j+1)N mod L */
+    const int32_t k2 = (int32_t)((((j % sl) * (int32_t)(n % l) + (int32_t)(h % l)) % sl + sl) % sl);  /* jN+N/2 mod L */
+    fill_part(d, h, (uint32_t)((k1 + sl) % sl), l);
+    fill_part(d + h, n - h, (uint32_t)k2, l);
 }
 
 static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t l, uint32_t intervals, uint32_t lat,
@@ -369,6 +395,7 @@ static void stream_run(const pp_req_t *q)
     for (uint32_t s = 0; s < l; s++) {
         const float ph = 6.2831853f * (float)s / (float)l;
         stream_tab[s] = pdx_dac_word((int)lroundf(q->amp * cosf(ph)), (int)lroundf(q->amp * sinf(ph)));
+        stream_tab[s + l] = stream_tab[s];
     }
     stream_fill(PDX_PP_A, -1, n, l);
     stream_fill(PDX_PP_B, 0, n, l);
