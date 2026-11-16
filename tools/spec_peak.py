@@ -29,7 +29,16 @@ def main():
     i = int(np.argmin(yv))
     db = lambda y: -(y - 100) / 479.0 * 80.0
     f = f0 + (cols[i] - 120) / 1720.0 * (f1 - f0)
-    print("picco %.3f MHz  %.1f dB  rumore %.1f dB  S/N %.1f dB" % (f, db(yv[i]), db(np.median(yv)), db(yv[i]) - db(np.median(yv))))
+    print("picco %.3f MHz  %.1f dB  rumore %.1f dB  S/N %.1f dB" % (f, db(yv[i]), db(np.median(yv)), db(yv[i]) - db(np.median(yv))),
+          end="")
+    # righe laterali: massimo tra 30 e 130 kHz dal picco (da un lato e dall'altro)
+    px_khz = 1720.0 / ((f1 - f0) * 1000.0)
+    side = [(c, y) for c, y in zip(cols, yv) if 30 * px_khz <= abs(c - cols[i]) <= 130 * px_khz]
+    if side:
+        c, y = min(side, key=lambda t: t[1])
+        print("  laterale max %.1f dB a %+.0f kHz (%.1f dBc)" % (db(y), (c - cols[i]) / px_khz, db(y) - db(yv[i])))
+    else:
+        print()
 
 
 if __name__ == "__main__":
