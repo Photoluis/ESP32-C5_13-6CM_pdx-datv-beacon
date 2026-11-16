@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2d-TXPAT"
+#define FW_VERSION "C5-P2e-DPAT"
 
 static bool tx_armed;
 
@@ -124,6 +124,27 @@ void app_main(void)
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
         else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
         else if (!strcmp(cmd, "TXSAFE")) { tx_armed = false; printf("OK txsafe\n"); }
+        else if (!strcmp(cmd, "DPAT")) {
+            /* DPAT <reg_off_hex> <and_hex> <or_hex> <amp> <n> <k> <ms>: come DACPAT, con un registro del blocco
+             * 0x600A9xxx modificato (v = (v & and) | or) solo durante l'impulso e poi ripristinato */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned roff, andm, orm, n, ms;
+            int amp, kk;
+            if (sscanf(p, "%*s %x %x %x %d %u %d %u", &roff, &andm, &orm, &amp, &n, &kk, &ms) != 7 || roff > 0xFFC) {
+                printf("ERR uso: DPAT <off_hex> <and_hex> <or_hex> <amp> <n> <k> <ms>\n");
+                continue;
+            }
+            const uint32_t ra = PDX_C5_DUMP_BASE + (roff & 0xFFCu);
+            const uint32_t old = rd(ra);
+            *(volatile uint32_t *)ra = (old & andm) | orm;
+            const uint32_t now = rd(ra);
+            printf("TX DPAT %u MHz reg %08" PRIx32 " %08" PRIx32 " -> %08" PRIx32 " amp %d n %u k %d ms %u\n", pdx_rf_mhz(),
+                   ra, old, now, amp, n, kk, ms);
+            pdx_dacp_res_t r;
+            pdx_rf_dac_pattern(0x0C, 0x80000u | (n & 0x3FFFu), amp, n, kk, ms, &r);
+            *(volatile uint32_t *)ra = old;
+            printf("ripristinato %08" PRIx32 "\nOK dpat\n", rd(ra));
+        }
         else if (!strcmp(cmd, "OWNTEST")) {
             uint32_t o[4];
             pdx_rf_owner_test(o);
