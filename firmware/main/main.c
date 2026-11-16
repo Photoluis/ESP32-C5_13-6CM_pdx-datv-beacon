@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2g-SCAN"
+#define FW_VERSION "C5-P2h-STREAM"
 
 static bool tx_armed;
 
@@ -136,6 +136,18 @@ void app_main(void)
             printf("SERIE +%03x ogni %u cicli:", io & 0x1FC, dt);
             for (unsigned i = 0; i < 16; i++) printf(" %08" PRIx32, t[i]);
             printf("\nOK scan\n");
+        }
+        else if (!strcmp(cmd, "STREAM")) {
+            /* STREAM <n> <l> <amp> <ms> <lat_cicli>: tono fs/l generato in tempo reale, ping-pong a 40 MS/s */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned n, l, ms, lat;
+            int amp;
+            if (sscanf(p, "%*s %u %u %d %u %u", &n, &l, &amp, &ms, &lat) != 5) { printf("ERR uso: STREAM <n> <l> <amp> <ms> <lat>\n"); continue; }
+            printf("TX STREAM %u MHz n %u l %u amp %d ms %u lat %u\n", pdx_rf_mhz(), n, l, amp, ms, lat);
+            pdx_stream_res_t r;
+            pdx_rf_stream(n, l, amp, ms, lat, &r);
+            printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
+                   " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
         }
         else if (!strcmp(cmd, "ONESHOT")) {
             /* ONESHOT <ctrl_hex>: replay una volta senza TX, cicli fino al bit18 (5 ripetizioni) */

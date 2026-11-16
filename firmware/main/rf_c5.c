@@ -281,7 +281,14 @@ uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *
 /* ------------------------------------------------------------------ P2f: ping-pong */
 SOC_RESERVE_MEMORY_REGION(0x40840000, 0x40850000, c5_rf_bank2_lo);
 
-typedef struct { unsigned mode, ms, period_us, alloc; pdx_pp_res_t *r; TaskHandle_t caller; } pp_req_t;
+typedef struct {
+    unsigned mode, ms, period_us, alloc;
+    pdx_pp_res_t *r;
+    TaskHandle_t caller;
+    uint32_t n, l, lat;
+    int amp;
+    pdx_stream_res_t *sres;
+} pp_req_t;
 static pp_req_t pp_req;
 static TaskHandle_t pp_task;
 static StaticTask_t pp_tcb;
@@ -314,12 +321,90 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
     return sw;
 }
 
+/* ---- P2h: streaming in tempo reale con ping-pong a 40 MS/s ----
+ * Intervallo j (j >= -1) = campioni [jN + N/2, (j+1)N + N/2) del flusso, banco B se j pari, A se j dispari.
+ * Contenuto del banco dell'intervallo j: indice i < N/2 -> campione (j+1)N + i; i >= N/2 -> campione jN + i.
+ * Il flusso è un tono di periodo L campioni (tabella stream_tab), quindi campione s -> stream_tab[s mod L]. */
+#define STREAM_L_MAX 256u
+static uint32_t stream_tab[STREAM_L_MAX];
+static pdx_stream_res_t stream_res;
+
+static IRAM_ATTR __attribute__((noinline)) void stream_fill(volatile uint32_t *dst, int32_t j, uint32_t n, uint32_t l)
+{
+    const uint32_t h = n / 2u;
+    uint32_t k = (uint32_t)((int64_t)(j + 1) * n % l);          /* indice i = 0 -> campione (j+1)N */
+    for (uint32_t i = 0; i < h; i++) { dst[i] = stream_tab[k]; if (++k == l) k = 0; }
+    k = (uint32_t)(((int64_t)j * n + h) % l + l) % l;            /* indice i = N/2 -> campione jN + N/2 */
+    for (uint32_t i = h; i < n; i++) { dst[i] = stream_tab[k]; if (++k == l) k = 0; }
+}
+
+static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t l, uint32_t intervals, uint32_t lat,
+                                                            uint32_t oa, uint32_t ob, uint32_t t0)
+{
+    volatile uint32_t *own = (volatile uint32_t *)PDX_C5_SRAM_OWNER;
+    const uint32_t per = n * 6u;                                    /* 40 MS/s = 6 cicli per campione */
+    uint32_t tsw = t0 + lat + (n / 2u) * 6u;                        /* primo scambio: intervallo 0 */
+    for (uint32_t j = 0; j < intervals; j++) {
+        while ((int32_t)(esp_cpu_get_cycle_count() - tsw) < 0) {}
+        const uint32_t late = esp_cpu_get_cycle_count() - tsw;
+        *own = (j & 1u) ? oa : ob;                                  /* j pari -> B, dispari -> A */
+        if (late > stream_res.late_max) stream_res.late_max = late;
+        const uint32_t f0 = esp_cpu_get_cycle_count();
+        stream_fill((j & 1u) ? PDX_PP_B : PDX_PP_A, (int32_t)j + 1, n, l);   /* banco appena liberato: intervallo j+1 */
+        const uint32_t fc = esp_cpu_get_cycle_count() - f0;
+        if (fc > stream_res.fill_max) stream_res.fill_max = fc;
+        if ((int32_t)(esp_cpu_get_cycle_count() - (tsw + per)) > 0) stream_res.overruns++;
+        tsw += per;
+    }
+    stream_res.intervals = intervals;
+}
+
+static void stream_run(const pp_req_t *q)
+{
+    const uint32_t n = q->n & ~1u, l = q->l;
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
+    const uint32_t owner0 = rd(PDX_C5_SRAM_OWNER), ctrl0 = rd(ctrl);
+    const uint32_t base = owner0 & ~0x10F00u, oa = base | 0x200u, ob = base | 0x400u;
+    stream_res = (pdx_stream_res_t){0};
+    for (uint32_t s = 0; s < l; s++) {
+        const float ph = 6.2831853f * (float)s / (float)l;
+        stream_tab[s] = pdx_dac_word((int)lroundf(q->amp * cosf(ph)), (int)lroundf(q->amp * sinf(ph)));
+    }
+    stream_fill(PDX_PP_A, -1, n, l);
+    stream_fill(PDX_PP_B, 0, n, l);
+    const uint32_t intervals = (uint32_t)((uint64_t)q->ms * 40000u / n);
+    force_txon(1);
+    esp_rom_delay_us(3000);
+    static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    taskENTER_CRITICAL(&mux);
+    wr(PDX_C5_SRAM_OWNER, oa);
+    wr(ctrl, ctrl0 & ~(1u << 31));
+    const uint32_t cv = 0x80000u | 0x20000u | n;                    /* ciclo, 40 MS/s, n parole */
+    wr(ctrl, cv);
+    const uint32_t t0 = esp_cpu_get_cycle_count();
+    wr(ctrl, cv | (1u << 31));
+    stream_loop(n, l, intervals, q->lat, oa, ob, t0);
+    wr(ctrl, rd(ctrl) & ~(1u << 31));
+    wr(ctrl, ctrl0);
+    wr(PDX_C5_SRAM_OWNER, owner0);
+    taskEXIT_CRITICAL(&mux);
+    force_txon(0);
+    phy_txcal_work_mode();
+    pdx_rf_tune(cur_mhz);
+}
+
 static void pp_task_fn(void *arg)
 {
     (void)arg;
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         pp_req_t *q = &pp_req;
+        if (q->mode == 10) {
+            stream_run(q);
+            *q->sres = stream_res;
+            xTaskNotifyGive(q->caller);
+            continue;
+        }
         static pdx_pp_res_t res;   /* nel banco 0: il chiamante puo' avere lo stack nel banco 2 */
         pdx_pp_res_t *r = &res;
         const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
@@ -365,6 +450,23 @@ void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, p
     pp_req = (pp_req_t){.mode = mode, .ms = ms, .period_us = period_us, .alloc = alloc, .r = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);              /* niente DMA di ricezione nei buffer del banco 2 */
+    vTaskDelay(pdMS_TO_TICKS(20));
+    xTaskNotifyGive(pp_task);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    esp_wifi_set_promiscuous(true);
+}
+
+void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r)
+{
+    if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
+    if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
+    if (n < 1000) n = 1000;
+    if (n > 16000) n = 16000;
+    if (l < 2) l = 2;
+    if (l > STREAM_L_MAX) l = STREAM_L_MAX;
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = n, .l = l, .lat = lat, .amp = amp, .sres = r,
+                        .caller = xTaskGetCurrentTaskHandle()};
+    esp_wifi_set_promiscuous(false);
     vTaskDelay(pdMS_TO_TICKS(20));
     xTaskNotifyGive(pp_task);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
