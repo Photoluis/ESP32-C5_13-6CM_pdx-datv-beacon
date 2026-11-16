@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2h-STREAM"
+#define FW_VERSION "C5-P3a-QPSK"
 
 static bool tx_armed;
 
@@ -148,6 +148,18 @@ void app_main(void)
             pdx_rf_stream(n, l, amp, ms, lat, &r);
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
+        }
+        else if (!strcmp(cmd, "QPSK")) {
+            /* QPSK <hold 4/8/16> <amp> <ms> <lat> [n]: RRC 0,35, simboli PRBS, SR = 40e6/(15*hold) */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned hold, ms, lat, n = 16000;
+            int amp;
+            if (sscanf(p, "%*s %u %d %u %u %u", &hold, &amp, &ms, &lat, &n) < 4) { printf("ERR uso: QPSK <hold> <amp> <ms> <lat> [n]\n"); continue; }
+            printf("TX QPSK %u MHz SR %.1f kS amp %d ms %u lat %u n %u\n", pdx_rf_mhz(), 40000.0 / (15.0 * hold), amp, ms, lat, n);
+            pdx_stream_res_t r;
+            pdx_rf_qpsk(n, hold, amp, ms, lat, &r);
+            printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli ritardo scambio max %" PRIu32
+                   " sforamenti %" PRIu32 "\nOK qpsk\n", r.intervals, r.fill_max, r.late_max, r.overruns);
         }
         else if (!strcmp(cmd, "ONESHOT")) {
             /* ONESHOT <ctrl_hex>: replay una volta senza TX, cicli fino al bit18 (5 ripetizioni) */

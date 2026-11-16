@@ -43,6 +43,8 @@ void pdx_rf_scan(uint32_t ctrlval, uint32_t idx_off, uint32_t dt, uint32_t **a, 
 /* P2h: tono di periodo l campioni generato in tempo reale nei due banchi (n parole, 40 MS/s), scambio a metà banco */
 typedef struct { uint32_t intervals, fill_max, late_max, overruns; } pdx_stream_res_t;
 void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r);
+/* P3a: QPSK RRC 0,35 con simboli PRBS, SR = 40e6 / (15 * hold) (hold 4/8/16 -> 667/333/167 kS) */
+void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r);
 uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *ctrl_end);
 void pdx_rf_pp_init(void);   /* crea il task con lo stack statico nel banco 0 */
 void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r);
