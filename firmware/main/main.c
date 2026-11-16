@@ -137,6 +137,15 @@ void app_main(void)
             for (unsigned i = 0; i < 16; i++) printf(" %08" PRIx32, t[i]);
             printf("\nOK scan\n");
         }
+        else if (!strcmp(cmd, "ONESHOT")) {
+            /* ONESHOT <ctrl_hex>: replay una volta senza TX, cicli fino al bit18 (5 ripetizioni) */
+            unsigned cv;
+            if (sscanf(p, "%*s %x", &cv) != 1) { printf("ERR uso: ONESHOT <ctrl_hex>\n"); continue; }
+            printf("ONESHOT ctrl %08x:", cv);
+            uint32_t ce = 0;
+            for (int i = 0; i < 5; i++) printf(" %" PRIu32, pdx_rf_oneshot_cycles(cv, 2400000u, &ce));
+            printf("  ctrl finale %08" PRIx32 "\nOK oneshot\n", ce);
+        }
         else if (!strcmp(cmd, "HEAPINFO")) {
             heap_caps_print_heap_info(MALLOC_CAP_8BIT);
             printf("OK heapinfo\n");

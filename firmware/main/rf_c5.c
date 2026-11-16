@@ -251,6 +251,33 @@ void pdx_rf_scan(uint32_t ctrlval, uint32_t idx_off, uint32_t dt, uint32_t **a, 
     *a = scan_a; *b = scan_b; *t = scan_t;
 }
 
+/* replay una volta (senza force_txon): cicli CPU dall'avvio al bit18 del ctrl; -1 se non arriva entro max_cycles */
+uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *ctrl_end)
+{
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
+    const uint32_t owner0 = rd(PDX_C5_SRAM_OWNER), ctrl0 = rd(ctrl);
+    uint32_t c = 0xFFFFFFFFu, v = 0;
+    static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    taskENTER_CRITICAL(&mux);
+    wr(PDX_C5_SRAM_OWNER, (owner0 & ~0x10F00u) | 0x200u);
+    wr(ctrl, ctrl0 & ~(1u << 31));
+    wr(ctrl, ctrlval & ~(1u << 31));
+    const uint32_t t0 = esp_cpu_get_cycle_count();
+    wr(ctrl, ctrlval | (1u << 31));
+    for (;;) {
+        v = rd(ctrl);
+        const uint32_t e = esp_cpu_get_cycle_count() - t0;
+        if (v & (1u << 18)) { c = e; break; }
+        if (e > max_cycles) break;
+    }
+    wr(ctrl, rd(ctrl) & ~(1u << 31));
+    wr(ctrl, ctrl0);
+    wr(PDX_C5_SRAM_OWNER, owner0);
+    taskEXIT_CRITICAL(&mux);
+    *ctrl_end = v;
+    return c;
+}
+
 /* ------------------------------------------------------------------ P2f: ping-pong */
 SOC_RESERVE_MEMORY_REGION(0x40840000, 0x40850000, c5_rf_bank2_lo);
 
