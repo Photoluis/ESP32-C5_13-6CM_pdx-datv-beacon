@@ -246,7 +246,7 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
     uint32_t tn = t0 + period, sw = 0, cur = (mode == 1) ? ob : oa;
     *own = cur;
     while ((uint32_t)(esp_cpu_get_cycle_count() - t0) < total) {
-        if (mode == 2 && (int32_t)(esp_cpu_get_cycle_count() - tn) >= 0) {
+        if (mode >= 2 && (int32_t)(esp_cpu_get_cycle_count() - tn) >= 0) {
             cur = (cur == oa) ? ob : oa;
             *own = cur;
             tn += period;
@@ -303,7 +303,7 @@ void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, p
     if (period_us < 20) period_us = 20;
     fill_tone(PDX_PP_A, 1600, 16, 200);
     fill_tone(PDX_C5_BANK, 1600, 32, 200);      /* 0x40830000 = A + 64 KB */
-    fill_tone(PDX_PP_B, 1600, -16, 200);
+    fill_tone(PDX_PP_B, 1600, mode >= 3 ? 16 : -16, 200);   /* mode 3: stesso tono in fase nei due banchi */
     pp_req = (pp_req_t){.mode = mode, .ms = ms, .period_us = period_us, .alloc = alloc, .r = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);              /* niente DMA di ricezione nei buffer del banco 2 */
