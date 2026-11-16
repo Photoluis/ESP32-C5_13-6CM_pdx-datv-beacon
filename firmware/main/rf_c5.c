@@ -306,8 +306,11 @@ void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, p
     fill_tone(PDX_PP_B, 1600, -16, 200);
     pp_req = (pp_req_t){.mode = mode, .ms = ms, .period_us = period_us, .alloc = alloc, .r = r,
                         .caller = xTaskGetCurrentTaskHandle()};
+    esp_wifi_set_promiscuous(false);              /* niente DMA di ricezione nei buffer del banco 2 */
+    vTaskDelay(pdMS_TO_TICKS(20));
     xTaskNotifyGive(pp_task);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    esp_wifi_set_promiscuous(true);
 }
 
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)
