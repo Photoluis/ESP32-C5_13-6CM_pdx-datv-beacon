@@ -220,6 +220,37 @@ void pdx_rf_owner_test(uint32_t out[4])
     PDX_C5_BANK[0] = 0;
 }
 
+/* ------------------------------------------------------------------ P2g: ricerca del contatore (senza TX) */
+#define SCAN_N 128u
+static uint32_t scan_a[SCAN_N], scan_b[SCAN_N], scan_t[16];
+
+/* replay avviato SENZA force_txon: legge due volte 0x600A9000.. e 16 volte il registro idx_off a intervalli di dt cicli */
+void pdx_rf_scan(uint32_t ctrlval, uint32_t idx_off, uint32_t dt, uint32_t **a, uint32_t **b, uint32_t **t)
+{
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
+    const uint32_t owner0 = rd(PDX_C5_SRAM_OWNER), ctrl0 = rd(ctrl);
+    for (unsigned j = 0; j < 1600; j++) PDX_C5_BANK[j] = 0;
+    static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
+    taskENTER_CRITICAL(&mux);
+    for (unsigned i = 0; i < SCAN_N; i++) scan_a[i] = rd(PDX_C5_DUMP_BASE + 4u * i);   /* a riposo */
+    wr(PDX_C5_SRAM_OWNER, (owner0 & ~0x10F00u) | 0x200u);
+    wr(ctrl, ctrl0 & ~(1u << 31));
+    wr(ctrl, ctrlval & ~(1u << 31));
+    wr(ctrl, ctrlval | (1u << 31));
+    for (volatile int d = 0; d < 200; d++) {}
+    for (unsigned i = 0; i < SCAN_N; i++) scan_b[i] = rd(PDX_C5_DUMP_BASE + 4u * i);   /* in corsa */
+    for (unsigned i = 0; i < 16; i++) {
+        const uint32_t c0 = esp_cpu_get_cycle_count();
+        scan_t[i] = rd(PDX_C5_DUMP_BASE + (idx_off & 0x1FCu));
+        while (esp_cpu_get_cycle_count() - c0 < dt) {}
+    }
+    wr(ctrl, rd(ctrl) & ~(1u << 31));
+    wr(ctrl, ctrl0);
+    wr(PDX_C5_SRAM_OWNER, owner0);
+    taskEXIT_CRITICAL(&mux);
+    *a = scan_a; *b = scan_b; *t = scan_t;
+}
+
 /* ------------------------------------------------------------------ P2f: ping-pong */
 SOC_RESERVE_MEMORY_REGION(0x40840000, 0x40850000, c5_rf_bank2_lo);
 

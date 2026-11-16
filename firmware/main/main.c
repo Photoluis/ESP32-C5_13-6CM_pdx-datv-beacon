@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P2f-PP"
+#define FW_VERSION "C5-P2g-SCAN"
 
 static bool tx_armed;
 
@@ -125,6 +125,18 @@ void app_main(void)
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
         else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
         else if (!strcmp(cmd, "TXSAFE")) { tx_armed = false; printf("OK txsafe\n"); }
+        else if (!strcmp(cmd, "SCAN")) {
+            /* SCAN <ctrl_hex> <idx_off_hex> <dt_cicli>: replay senza force_txon (nessuna TX), registri prima/durante */
+            unsigned cv, io, dt;
+            if (sscanf(p, "%*s %x %x %u", &cv, &io, &dt) != 3) { printf("ERR uso: SCAN <ctrl_hex> <idx_off_hex> <dt>\n"); continue; }
+            uint32_t *a, *b, *t;
+            pdx_rf_scan(cv, io, dt, &a, &b, &t);
+            for (unsigned i = 0; i < 128; i++)
+                if (a[i] != b[i]) printf("DIFF +%03x riposo %08" PRIx32 " corsa %08" PRIx32 "\n", 4 * i, a[i], b[i]);
+            printf("SERIE +%03x ogni %u cicli:", io & 0x1FC, dt);
+            for (unsigned i = 0; i < 16; i++) printf(" %08" PRIx32, t[i]);
+            printf("\nOK scan\n");
+        }
         else if (!strcmp(cmd, "HEAPINFO")) {
             heap_caps_print_heap_info(MALLOC_CAP_8BIT);
             printf("OK heapinfo\n");

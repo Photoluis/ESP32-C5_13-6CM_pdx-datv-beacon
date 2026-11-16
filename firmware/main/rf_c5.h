@@ -39,5 +39,6 @@ void pdx_rf_owner_test(uint32_t out[4]);
 #define PDX_PP_A ((volatile uint32_t *)0x40820000u)
 #define PDX_PP_B ((volatile uint32_t *)0x40840000u)
 typedef struct { uint32_t switches, ctrl_running, ctrl_end, owner_a, owner_b; } pdx_pp_res_t;
+void pdx_rf_scan(uint32_t ctrlval, uint32_t idx_off, uint32_t dt, uint32_t **a, uint32_t **b, uint32_t **t);
 void pdx_rf_pp_init(void);   /* crea il task con lo stack statico nel banco 0 */
 void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r);
