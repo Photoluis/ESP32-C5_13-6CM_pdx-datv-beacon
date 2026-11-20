@@ -77,7 +77,22 @@ def main():
         ph = np.tile(np.arange(SPS), n)
         I = t[ph, np.repeat(hi, SPS)].astype(np.float64)
         Q = t[ph, np.repeat(hq, SPS)].astype(np.float64)
-        x5 = I + 1j * Q                # 5 MS/s (ogni valore ripetuto 8 volte a 40 MS/s: qui basta il valore)
+        v = (I + 1j * Q).astype(np.complex64)
+        # flusso a 40 MS/s come il firmware: hold copie per campione, +1 copia sul primo campione del simbolo quando
+        # l'accumulatore del resto supera l'SR
+        hold = tot // SPS
+        fr = 40_000_000 - SPS * hold * sr
+        cnt = np.full(n * SPS, hold, dtype=np.int64)
+        acc = 0
+        for k in range(n):
+            acc += fr
+            if acc >= sr:
+                acc -= sr
+                cnt[k * SPS] += 1
+        x40 = np.repeat(v, cnt)
+        m = len(x40) // 8 * 8
+        x5 = x40[:m].reshape(-1, 8).mean(axis=1)          # media su 8 parole -> 5 MS/s
+        print(f"40 MS/s: {len(x40)} parole, {len(x40) / n:.4f} parole/simbolo (atteso {40e6 / sr:.4f})")
     # passa-basso e decimazione 5 -> 1 MS/s
     taps = np.sinc(np.arange(-40, 41) / 5) / 5 * np.hamming(81)
     y = np.convolve(x5, taps, mode="same")[::5]
@@ -86,7 +101,8 @@ def main():
     out[0::2] = np.clip(np.round(y.real), -127, 127)
     out[1::2] = np.clip(np.round(y.imag), -127, 127)
     out.tofile(a.out)
-    print(f"{a.out}: {len(y)} campioni a {SPS * sr / 5:.0f} S/s ({SPS} fasi), {n} simboli, SR file {sr}")
+    fs_out = SPS * sr / 5 if a.ideal else 1e6
+    print(f"{a.out}: {len(y)} campioni a {fs_out:.0f} S/s ({SPS} fasi), {n} simboli, SR file {sr}")
 
 
 if __name__ == "__main__":

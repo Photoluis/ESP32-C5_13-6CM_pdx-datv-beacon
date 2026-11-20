@@ -440,22 +440,26 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen(uint32_t *d, uint32_t c
 static const uint8_t *sym_data;
 static uint32_t sym_n, sym_pos, sym_qinv;
 
+/* SR frazionario: ogni simbolo dura ns*hold parole a 40 MS/s più, in media, fx.fr/fx.sr parole; l'accumulatore
+ * aggiunge una copia in più del primo campione del simbolo quando supera fx.sr (333 kS: +1 parola ogni ~8,3 simboli,
+ * salto di 1/120 di simbolo). fx.rem/fx.w = copie del campione rimaste da scrivere nel banco successivo. */
+static struct { uint32_t acc, fr, sr, rem, w; } fx;
+
 static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_sym(uint32_t *d, uint32_t cnt)
 {
     uint32_t p = qg.p, hi = qg.hi, hq = qg.hq, pos = sym_pos;
     const uint32_t n = sym_n, qx = sym_qinv, ns = qsps, hold = qg.hold;
+    uint32_t acc = fx.acc, rem = fx.rem, w = fx.w;
+    const uint32_t fr = fx.fr, sr = fx.sr;
     const uint8_t *src = sym_data;
     uint32_t *const end = d + cnt;
+    while (rem && d < end) { *d++ = w; rem--; }
     while (d < end) {
-        const uint32_t w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
-        if (hold == 8) {
-            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
-            d += 8;
-        } else if (hold == 10) {
-            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w; d[8] = w; d[9] = w;
-            d += 10;
-        } else {
-            for (uint32_t k = 0; k < hold; k++) *d++ = w;
+        w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
+        uint32_t c = hold;
+        if (p == 0) {
+            acc += fr;
+            if (acc >= sr) { acc -= sr; c++; }
         }
         if (++p == ns) {
             p = 0;
@@ -464,8 +468,21 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_sym(uint32_t *d, uint32
             hi = ((hi << 1) | (~s & 1u)) & 255u;
             hq = ((hq << 1) | ((((~s) >> 1) ^ qx) & 1u)) & 255u;   /* qx = 1: Q negato (spettro invertito) */
         }
+        const uint32_t room = (uint32_t)(end - d);
+        if (c == 8 && room >= 8) {
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
+            d += 8;
+        } else if (c == 10 && room >= 10) {
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w; d[8] = w; d[9] = w;
+            d += 10;
+        } else {
+            const uint32_t k = c < room ? c : room;
+            for (uint32_t i = 0; i < k; i++) *d++ = w;
+            rem = c - k;
+        }
     }
     qg.p = p; qg.hi = hi; qg.hq = hq; sym_pos = pos;
+    fx.acc = acc; fx.rem = rem; fx.w = w;
 }
 
 /* banco dell'intervallo j: prima la metà alta (suona prima), poi la bassa */
@@ -694,11 +711,14 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
     sym_data = base + 64;                        /* simboli dopo l'intestazione */
     sym_n = n / 4u * 4u;
     sym_qinv = qinv ? 1u : 0u;
-    const uint32_t tot = 40000000u / sr;                     /* campioni a 40 MS/s per simbolo */
-    if (tot * sr != 40000000u) { sym_data = base; return; }   /* SR non divisore esatto di 40 MHz */
+    const uint32_t tot = 40000000u / sr;                     /* parole intere a 40 MS/s per simbolo */
+    if (sr < 50000u || sr > 2000000u) { sym_data = base; return; }
     qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
     const uint32_t hold = tot / qsps;
-    r->stopped = 100u + hold;                                 /* diagnosi: ripetizioni usate */
+    fx.sr = sr;
+    fx.fr = 40000000u - qsps * hold * sr;                    /* resto per simbolo (333 kS: 40000) */
+    fx.acc = 0; fx.rem = 0; fx.w = 0;
+    if (fx.fr >= sr) { sym_data = base; return; }             /* al massimo una parola in più per simbolo */
     stream_kind = 2;
     pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
