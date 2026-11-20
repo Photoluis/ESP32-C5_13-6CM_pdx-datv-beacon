@@ -107,7 +107,7 @@ void app_main(void)
     gpio_config_t gb = {.pin_bit_mask = 1ULL << 28, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
     gpio_config(&gb);                      /* tasto BOOT = stop della TX lunga */
 
-    pdx_rf_init();
+    if (pdx_rf_init() != ESP_OK) printf("ATTENZIONE: radio non inizializzata, solo comandi di servizio\n");
     pdx_rf_pp_init();
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 

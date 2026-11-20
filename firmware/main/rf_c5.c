@@ -8,6 +8,8 @@
  */
 #include "rf_c5.h"
 
+#include <stdio.h>
+
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_rom_sys.h"
@@ -41,25 +43,30 @@ static unsigned cur_mhz = 2412;
 static inline uint32_t rd(uint32_t a) { return *(volatile uint32_t *)a; }
 static inline void wr(uint32_t a, uint32_t v) { *(volatile uint32_t *)a = v; }
 
-void pdx_rf_init(void)
+/* 20/11: niente ESP_ERROR_CHECK qui. Un errore all'avvio (heap esaurito) faceva riavviare la scheda in continuo e la
+ * porta USB si bloccava: ora l'errore si stampa e il prompt resta raggiungibile per riprogrammare. */
+#define TRY(x) do { esp_err_t _e = (x); if (_e != ESP_OK) { printf("ERR avvio RF: %s = %s\n", #x, esp_err_to_name(_e)); return _e; } } while (0)
+
+esp_err_t pdx_rf_init(void)
 {
     esp_err_t e = nvs_flash_init();
     if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
+        TRY(nvs_flash_erase());
         e = nvs_flash_init();
     }
-    ESP_ERROR_CHECK(e);
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    TRY(e);
+    TRY(esp_netif_init());
+    TRY(esp_event_loop_create_default());
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_NULL));   /* nessuna trama trasmessa dal driver */
-    ESP_ERROR_CHECK(esp_wifi_start());
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
-    ESP_ERROR_CHECK(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
+    TRY(esp_wifi_init(&cfg));
+    TRY(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    TRY(esp_wifi_set_mode(WIFI_MODE_NULL));   /* nessuna trama trasmessa dal driver */
+    TRY(esp_wifi_start());
+    TRY(esp_wifi_set_ps(WIFI_PS_NONE));
+    TRY(esp_wifi_set_promiscuous(true));
+    TRY(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
     pdx_rf_tune(2412);
+    return ESP_OK;
 }
 
 static void rx_idle(void)
