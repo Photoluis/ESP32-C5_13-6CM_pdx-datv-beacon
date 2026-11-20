@@ -284,7 +284,7 @@ uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *
 }
 
 /* ------------------------------------------------------------------ P2f: ping-pong */
-SOC_RESERVE_MEMORY_REGION(0x40840000, 0x40850000, c5_rf_bank2_lo);
+SOC_RESERVE_MEMORY_REGION(0x40840000, 0x4084C000, c5_rf_bank2_lo);   /* banco B: 12000 parole (48 KB) */
 
 typedef struct {
     unsigned mode, ms, period_us, alloc;
@@ -802,7 +802,7 @@ void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, p
     if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     if (n < 1000) n = 1000;
-    if (n > 16000) n = 16000;
+    if (n > 12000) n = 12000;
     if (l < 2) l = 2;
     if (l > STREAM_L_MAX) l = STREAM_L_MAX;
     stream_kind = 0;
@@ -822,7 +822,7 @@ void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, 
     if (hold != 4 && hold != 8 && hold != 16) hold = 8;
     n = n / (2u * hold) * (2u * hold);          /* metà banco multipla di H */
     if (n < 1600) n = 1600;
-    if (n > 16000) n = 16000;
+    if (n > 12000) n = 12000;
     stream_kind = 1;
     qsps = 15;
     pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = n, .l = hold, .lat = lat, .amp = amp, .sres = r,
@@ -883,7 +883,7 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
     fx.acc = 0; fx.rem = 0; fx.w = 0;
     if (fx.fr >= sr) { sym_data = base; return; }             /* al massimo una parola in più per simbolo */
     stream_kind = 2;
-    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = hold, .lat = lat, .amp = amp, .sres = r,
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 12000, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);
     vTaskDelay(pdMS_TO_TICKS(20));
@@ -944,7 +944,7 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     if (fx.fr >= sr) return "SR non realizzabile";
     sym_qinv = qinv ? 1u : 0u;
     stream_kind = 3;
-    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = hold, .lat = lat, .amp = amp, .sres = r,
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 12000, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);
     vTaskDelay(pdMS_TO_TICKS(20));
