@@ -84,6 +84,9 @@ unsigned pdx_rf_mhz(void) { return cur_mhz; }
 
 /* ------------------------------------------------------------------ P2c: trasmissione di prova */
 #include <math.h>
+#include <string.h>
+#include "soc/soc.h"
+#include "soc/gpio_reg.h"
 #include "esp_cpu.h"
 #include "esp_phy_cert_test.h"
 #include "freertos/FreeRTOS.h"
@@ -431,18 +434,49 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen(uint32_t *d, uint32_t c
     qg.p = p; qg.hi = hi; qg.hq = hq; qg.lfsr = lfsr;
 }
 
+/* ---- P3b: simboli DVB-S2 dalla partizione "symbols" (formato PDXSYM01 dell'S3: 4 simboli per byte, primo nei bit
+ * bassi, bit0 = I, bit1 = Q, 1 = +1). Nella tabella RRC il bit di storia 1 vale -1, quindi bit di storia = !bit. */
+static const uint8_t *sym_data;
+static uint32_t sym_n, sym_pos, sym_qinv;
+
+static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_sym(uint32_t *d, uint32_t cnt)
+{
+    uint32_t p = qg.p, hi = qg.hi, hq = qg.hq, pos = sym_pos;
+    const uint32_t n = sym_n, qx = sym_qinv;
+    const uint8_t *src = sym_data;
+    uint32_t *const end = d + cnt;
+    while (d < end) {
+        const uint32_t w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
+        d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
+        d += 8;
+        if (++p == QPSK_SPS) {
+            p = 0;
+            const uint32_t s = (src[pos >> 2] >> ((pos & 3u) * 2u)) & 3u;
+            if (++pos == n) pos = 0;
+            hi = ((hi << 1) | (~s & 1u)) & 255u;
+            hq = ((hq << 1) | ((((~s) >> 1) ^ qx) & 1u)) & 255u;   /* qx = 1: Q negato (spettro invertito) */
+        }
+    }
+    qg.p = p; qg.hi = hi; qg.hq = hq; sym_pos = pos;
+}
+
 /* banco dell'intervallo j: prima la metà alta (suona prima), poi la bassa */
 static IRAM_ATTR __attribute__((noinline)) void qpsk_fill(volatile uint32_t *dst, int32_t j, uint32_t n, uint32_t l)
 {
     (void)j; (void)l;
     uint32_t *d = (uint32_t *)dst;
+    if (stream_kind == 2) {
+        qpsk_gen_sym(d + n / 2u, n - n / 2u);
+        qpsk_gen_sym(d, n / 2u);
+        return;
+    }
     qpsk_gen(d + n / 2u, n - n / 2u);
     qpsk_gen(d, n / 2u);
 }
 
 static IRAM_ATTR __attribute__((noinline)) void any_fill(volatile uint32_t *dst, int32_t j, uint32_t n, uint32_t l)
 {
-    if (stream_kind == 1) qpsk_fill(dst, j, n, l);
+    if (stream_kind >= 1) qpsk_fill(dst, j, n, l);
     else stream_fill(dst, j, n, l);
 }
 
@@ -453,6 +487,7 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
     const uint32_t per = n * 6u;                                    /* 40 MS/s = 6 cicli per campione */
     uint32_t tsw = t0 + lat + (n / 2u) * 6u;                        /* primo scambio: intervallo 0 */
     for (uint32_t j = 0; j < intervals; j++) {
+        if ((j & 255u) == 0 && !(REG_READ(GPIO_IN_REG) & (1u << 28))) { stream_res.stopped = 1; intervals = j; break; }  /* BOOT */
         while ((int32_t)(esp_cpu_get_cycle_count() - tsw) < 0) {}
         const uint32_t late = esp_cpu_get_cycle_count() - tsw;
         *own = (j & 1u) ? oa : ob;                                  /* j pari -> B, dispari -> A */
@@ -479,10 +514,12 @@ static void stream_run(const pp_req_t *q)
         stream_tab[s] = pdx_dac_word((int)lroundf(q->amp * cosf(ph)), (int)lroundf(q->amp * sinf(ph)));
         stream_tab[s + l] = stream_tab[s];
     }
-    if (stream_kind == 1) {
+    if (stream_kind >= 1) {
         qpsk_build(q->amp);
         qg.p = 0; qg.hi = 0; qg.hq = 0; qg.lfsr = 0x5A5A5Au; qg.hold = l;   /* per il QPSK l = H */
-        qpsk_gen((uint32_t *)PDX_PP_A, n / 2u);       /* intervallo -1: suona solo la metà bassa di A */
+        sym_pos = 0;
+        if (stream_kind == 2) qpsk_gen_sym((uint32_t *)PDX_PP_A, n / 2u);
+        else qpsk_gen((uint32_t *)PDX_PP_A, n / 2u);   /* intervallo -1: suona solo la metà bassa di A */
         qpsk_fill(PDX_PP_B, 0, n, l);
     } else {
         stream_fill(PDX_PP_A, -1, n, l);
@@ -607,6 +644,57 @@ void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, 
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     esp_wifi_set_promiscuous(true);
     stream_kind = 0;
+}
+
+#include "esp_partition.h"
+#include "soc/gpio_reg.h"
+
+static esp_partition_mmap_handle_t sym_mh;
+
+/* mappa la partizione "symbols" e controlla l'intestazione PDXSYM01; restituisce il numero di simboli (0 = errore) */
+uint32_t pdx_rf_sym_open(uint32_t *sr, char label[41])
+{
+    const esp_partition_t *pt = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "symbols");
+    if (!pt) return 0;
+    if (!sym_data) {
+        const void *ptr;
+        if (esp_partition_mmap(pt, 0, pt->size, ESP_PARTITION_MMAP_DATA, &ptr, &sym_mh) != ESP_OK) return 0;
+        sym_data = (const uint8_t *)ptr;
+    }
+    const uint8_t *h = sym_data;
+    if (memcmp(h, "PDXSYM01", 8) != 0) return 0;
+    uint32_t n;
+    memcpy(sr, h + 8, 4);
+    memcpy(&n, h + 12, 4);
+    memcpy(label, h + 24, 40);
+    label[40] = 0;
+    if (n == 0 || n / 4u + 64u > pt->size) return 0;
+    return n;
+}
+
+void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r)
+{
+    if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
+    if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
+    uint32_t sr;
+    char lab[41];
+    const uint32_t n = pdx_rf_sym_open(&sr, lab);
+    *r = (pdx_stream_res_t){0};
+    if (!n) return;
+    const uint8_t *base = sym_data;
+    sym_data = base + 64;                        /* simboli dopo l'intestazione */
+    sym_n = n / 4u * 4u;
+    sym_qinv = qinv ? 1u : 0u;
+    stream_kind = 2;
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = 8, .lat = lat, .amp = amp, .sres = r,
+                        .caller = xTaskGetCurrentTaskHandle()};
+    esp_wifi_set_promiscuous(false);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    xTaskNotifyGive(pp_task);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    esp_wifi_set_promiscuous(true);
+    stream_kind = 0;
+    sym_data = base;
 }
 
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)

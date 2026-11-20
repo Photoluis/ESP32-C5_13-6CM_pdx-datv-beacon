@@ -22,3 +22,6 @@ CONFIG_LOG_DEFAULT_LEVEL_WARN=y
 # CONFIG_ESP_PHY_IRAM_OPT is not set
 # CONFIG_ESP_WIFI_AMPDU_TX_ENABLED is not set
 # CONFIG_ESP_WIFI_AMPDU_RX_ENABLED is not set
+# tabella delle partizioni con la partizione "symbols" (2,9 MB)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

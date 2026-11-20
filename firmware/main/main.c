@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P3a-QPSK"
+#define FW_VERSION "C5-P3b-S2"
 
 static bool tx_armed;
 
@@ -104,6 +104,8 @@ void app_main(void)
     gpio_config_t g = {.pin_bit_mask = 1ULL << PDX_C5_ANT_GPIO, .mode = GPIO_MODE_INPUT_OUTPUT};
     gpio_config(&g);
     gpio_set_level(PDX_C5_ANT_GPIO, 0);   /* stato di riposo della scheda (pull-down R17) */
+    gpio_config_t gb = {.pin_bit_mask = 1ULL << 28, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
+    gpio_config(&gb);                      /* tasto BOOT = stop della TX lunga */
 
     pdx_rf_init();
     pdx_rf_pp_init();
@@ -148,6 +150,31 @@ void app_main(void)
             pdx_rf_stream(n, l, amp, ms, lat, &r);
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
+        }
+        else if (!strcmp(cmd, "SYMINFO")) {
+            uint32_t sr;
+            char lab[41];
+            const uint32_t n = pdx_rf_sym_open(&sr, lab);
+            if (n) printf("OK syminfo %" PRIu32 " simboli SR %" PRIu32 " = %.2f s  \"%s\"\n", n, sr, (double)n / sr, lab);
+            else printf("ERR syminfo: partizione symbols assente o senza intestazione PDXSYM01\n");
+        }
+        else if (!strcmp(cmd, "S2PLAY")) {
+            /* S2PLAY <amp> <ms> [lat] [qinv]: DVB-S2 dalla flash, stop anche col tasto BOOT */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned ms, lat = 50, qinv = 0;
+            int amp;
+            if (sscanf(p, "%*s %d %u %u %u", &amp, &ms, &lat, &qinv) < 2) { printf("ERR uso: S2PLAY <amp> <ms> [lat] [qinv]\n"); continue; }
+            uint32_t sr;
+            char lab[41];
+            if (!pdx_rf_sym_open(&sr, lab)) { printf("ERR simboli assenti\n"); continue; }
+            printf("TX S2PLAY %u MHz amp %d ms %u lat %u qinv %u \"%s\" (stop: BOOT)\n", pdx_rf_mhz(), amp, ms, lat, qinv, lab);
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pdx_stream_res_t r;
+            pdx_rf_s2play(amp, ms, lat, qinv, &r);
+            printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli ritardo scambio max %" PRIu32
+                   " sforamenti %" PRIu32 " fermato %" PRIu32 "\nOK s2play\n", r.intervals, r.fill_max, r.late_max,
+                   r.overruns, r.stopped);
         }
         else if (!strcmp(cmd, "QPSK")) {
             /* QPSK <hold 4/8/16> <amp> <ms> <lat> [n]: RRC 0,35, simboli PRBS, SR = 40e6/(15*hold) */

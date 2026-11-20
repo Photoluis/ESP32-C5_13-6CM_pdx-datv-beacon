@@ -41,7 +41,11 @@ void pdx_rf_owner_test(uint32_t out[4]);
 typedef struct { uint32_t switches, ctrl_running, ctrl_end, owner_a, owner_b; } pdx_pp_res_t;
 void pdx_rf_scan(uint32_t ctrlval, uint32_t idx_off, uint32_t dt, uint32_t **a, uint32_t **b, uint32_t **t);
 /* P2h: tono di periodo l campioni generato in tempo reale nei due banchi (n parole, 40 MS/s), scambio a metà banco */
-typedef struct { uint32_t intervals, fill_max, late_max, overruns; } pdx_stream_res_t;
+typedef struct { uint32_t intervals, fill_max, late_max, overruns, stopped; } pdx_stream_res_t;
+/* P3b: DVB-S2 dai simboli della partizione "symbols" (333,3 kS, RRC 0,35), fermata col tasto BOOT (GPIO28) */
+#define PDX_S2_MS_MAX 120000u
+uint32_t pdx_rf_sym_open(uint32_t *sr, char label[41]);
+void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r);
 void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r);
 /* P3a: QPSK RRC 0,35 con simboli PRBS, SR = 40e6 / (15 * hold) (hold 4/8/16 -> 667/333/167 kS) */
 void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r);
