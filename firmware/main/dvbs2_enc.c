@@ -393,8 +393,8 @@ void pdx_s2l_job_start(pdx_s2l_job_t *j, pdx_s2_t *s, uint8_t *cw, uint16_t sync
     cw[9] = pdx_s2_crc8(cw, 9);
 }
 
-#define S2L_SCR_BYTES 48u
-#define S2L_BCH_BYTES 32u
+#define S2L_SCR_BYTES 32u
+#define S2L_BCH_BYTES 16u
 #define S2L_XOR_BYTES 512u
 
 /* un passo (al massimo qualche migliaio di cicli); true quando la parola di codice è completa */

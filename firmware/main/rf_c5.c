@@ -533,8 +533,8 @@ static IRAM_ATTR __attribute__((noinline)) bool live_producer_step(void)
         lv.pstage = 1;
         return true;
     }
-    if (lv.pstage == 1) {                                  /* al massimo due pacchetti TS per passo */
-        for (int n = 0; n < 2 && lv.fpos < lv.nb; n++) {
+    if (lv.pstage == 1) {                                  /* un pacchetto TS per passo */
+        for (int n = 0; n < 1 && lv.fpos < lv.nb; n++) {
             if (lv.pkt_pos == 188u) {
                 uint8_t raw[188];
                 pdx_mux_next(&live_mux, raw);
@@ -681,7 +681,7 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
         const uint32_t fc = esp_cpu_get_cycle_count() - f0;
         if (fc > stream_res.fill_max) stream_res.fill_max = fc;
         if (stream_kind == 3) {                                   /* tempi morti: passi del produttore DVB-S2 */
-            const uint32_t dl = tsw + per - 9600u;                /* margine 40 us prima dello scambio */
+            const uint32_t dl = tsw + per - 14000u;               /* margine 58 us prima dello scambio */
             while ((int32_t)(esp_cpu_get_cycle_count() - dl) < 0) {
                 const uint32_t s0 = esp_cpu_get_cycle_count();
                 if (!live_producer_step()) break;
