@@ -371,8 +371,9 @@ static IRAM_ATTR __attribute__((noinline)) void stream_fill(volatile uint32_t *d
  * 15 campioni calcolati per simbolo, ciascuno ripetuto H volte a 40 MS/s: SR = 40e6 / (15 H) (H=8 -> 333,3 kS).
  * qpsk_t[fase][storia]: somma degli 8 simboli (+-1) pesati dal filtro, già nel formato a 10 bit (stessa tabella per I e Q).
  * Il flusso è sequenziale: per ogni banco si riempie prima la metà alta (campioni che suonano prima) poi la bassa. */
-#define QPSK_SPS 15u
-static uint16_t qpsk_t[QPSK_SPS][256];
+#define QPSK_SPS_MAX 16u
+static uint16_t qpsk_t[QPSK_SPS_MAX][256];
+static uint32_t qsps = 15;          /* fasi del filtro = campioni calcolati per simbolo */
 static struct { uint32_t p, hi, hq, lfsr, hold; } qg;
 static int stream_kind;                     /* 0 = tono, 1 = QPSK */
 
@@ -390,7 +391,7 @@ static float qpsk_sum(unsigned p, unsigned h)
     float s = 0;
     for (unsigned m = 0; m < 8; m++) {
         const float sym = (h >> m) & 1u ? -1.0f : 1.0f;             /* bit m = simbolo n-m */
-        s += sym * rrc_f((float)p / QPSK_SPS + (float)m - 3.5f, 0.35f);
+        s += sym * rrc_f((float)p / (float)qsps + (float)m - 3.5f, 0.35f);
     }
     return s;
 }
@@ -398,19 +399,19 @@ static float qpsk_sum(unsigned p, unsigned h)
 static void qpsk_build(int amp)                 /* due passate: niente tabella float da 15 KB nel banco 0 */
 {
     float vmax = 0;
-    for (unsigned p = 0; p < QPSK_SPS; p++)
+    for (unsigned p = 0; p < qsps; p++)
         for (unsigned h = 0; h < 256; h++) {
             const float s = fabsf(qpsk_sum(p, h));
             if (s > vmax) vmax = s;
         }
-    for (unsigned p = 0; p < QPSK_SPS; p++)
+    for (unsigned p = 0; p < qsps; p++)
         for (unsigned h = 0; h < 256; h++) qpsk_t[p][h] = (uint16_t)((int)lroundf(qpsk_sum(p, h) / vmax * amp) & 0x3FF);
 }
 
 static IRAM_ATTR __attribute__((noinline)) void qpsk_gen(uint32_t *d, uint32_t cnt)
 {
     uint32_t p = qg.p, hi = qg.hi, hq = qg.hq, lfsr = qg.lfsr;
-    const uint32_t hold = qg.hold;
+    const uint32_t hold = qg.hold, ns = qsps;
     uint32_t *const end = d + cnt;
     while (d < end) {
         const uint32_t w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
@@ -420,7 +421,7 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen(uint32_t *d, uint32_t c
         } else {
             for (uint32_t k = 0; k < hold; k++) *d++ = w;
         }
-        if (++p == QPSK_SPS) {
+        if (++p == ns) {
             p = 0;
             /* PRBS 2^23-1 (x^23 + x^18 + 1): due bit per simbolo */
             uint32_t b0 = ((lfsr >> 22) ^ (lfsr >> 17)) & 1u;
@@ -442,14 +443,21 @@ static uint32_t sym_n, sym_pos, sym_qinv;
 static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_sym(uint32_t *d, uint32_t cnt)
 {
     uint32_t p = qg.p, hi = qg.hi, hq = qg.hq, pos = sym_pos;
-    const uint32_t n = sym_n, qx = sym_qinv;
+    const uint32_t n = sym_n, qx = sym_qinv, ns = qsps, hold = qg.hold;
     const uint8_t *src = sym_data;
     uint32_t *const end = d + cnt;
     while (d < end) {
         const uint32_t w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
-        d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
-        d += 8;
-        if (++p == QPSK_SPS) {
+        if (hold == 8) {
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
+            d += 8;
+        } else if (hold == 10) {
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w; d[8] = w; d[9] = w;
+            d += 10;
+        } else {
+            for (uint32_t k = 0; k < hold; k++) *d++ = w;
+        }
+        if (++p == ns) {
             p = 0;
             const uint32_t s = (src[pos >> 2] >> ((pos & 3u) * 2u)) & 3u;
             if (++pos == n) pos = 0;
@@ -636,6 +644,7 @@ void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, 
     if (n < 1600) n = 1600;
     if (n > 16000) n = 16000;
     stream_kind = 1;
+    qsps = 15;
     pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = n, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);
@@ -685,8 +694,13 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
     sym_data = base + 64;                        /* simboli dopo l'intestazione */
     sym_n = n / 4u * 4u;
     sym_qinv = qinv ? 1u : 0u;
+    const uint32_t tot = 40000000u / sr;                     /* campioni a 40 MS/s per simbolo */
+    if (tot * sr != 40000000u) { sym_data = base; return; }   /* SR non divisore esatto di 40 MHz */
+    qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
+    const uint32_t hold = tot / qsps;
+    r->stopped = 100u + hold;                                 /* diagnosi: ripetizioni usate */
     stream_kind = 2;
-    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = 8, .lat = lat, .amp = amp, .sres = r,
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);
     vTaskDelay(pdMS_TO_TICKS(20));
