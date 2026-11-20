@@ -35,5 +35,31 @@ typedef struct {
 /* un PLFRAME dal DATA FIELD (dfl/8 byte, già con i CRC-8 al posto dei sync byte) e dal SYNCD */
 void pdx_s2_frame(pdx_s2_t *s, const uint8_t *data_field, uint16_t syncd, pdx_s2_out_t *out);
 
+/* ---- C5 (P4b): codifica a passi e mappatura pigra (prbs e rotazione PL al volo, memoria fornita dal chiamante) ---- */
+const char *pdx_s2l_init(pdx_s2_t *s, const char *rate, bool shortf, bool pilots, void *bch_mem /* 6144 B */,
+                         void *rows_mem /* rows_cap x 48 B */, uint32_t rows_cap);
+void pdx_s2l_dummy_header(const pdx_s2_t *s, uint8_t hdr[90]);
+
+typedef struct {
+    pdx_s2_t *s;
+    uint8_t *cw;                   /* parola di codice: il chiamante mette il DATA FIELD da cw + 10 prima dello start */
+    uint32_t stage, i, prbs, carry;
+    uint32_t r[6];
+    const uint16_t *a;
+} pdx_s2l_job_t;
+void pdx_s2l_job_start(pdx_s2l_job_t *j, pdx_s2_t *s, uint8_t *cw, uint16_t syncd);
+bool pdx_s2l_job_step(pdx_s2l_job_t *j);      /* true = parola di codice completa */
+
+typedef struct {
+    const uint8_t *cw, *hdr;       /* cw NULL = frame DUMMY */
+    uint32_t k, nsym, d, ndata, blk, pil;
+    uint32_t xa, ya, xb, yb;
+    bool pilots;
+} pdx_s2l_map_t;
+void pdx_s2l_map_init(void);                  /* stato iniziale del secondo registro Gold (una volta) */
+void pdx_s2l_map_start(pdx_s2l_map_t *m, const pdx_s2_t *s, const uint8_t *cw, const uint8_t *hdr);
+uint32_t pdx_s2l_map_next(pdx_s2l_map_t *m);  /* codice QPSK del prossimo simbolo (bit 0 = I, bit 1 = Q, 1 = +1) */
+static inline bool pdx_s2l_map_done(const pdx_s2l_map_t *m) { return m->k >= m->nsym; }
+
 /* mode adaptation (5.1.4): sostituisce il sync byte di ogni pacchetto TS con il CRC-8 del precedente */
 uint8_t pdx_s2_crc8(const uint8_t *p, uint32_t n);

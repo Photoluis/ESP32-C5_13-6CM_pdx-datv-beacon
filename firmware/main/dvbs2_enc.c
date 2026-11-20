@@ -314,3 +314,268 @@ const char *pdx_s2_init(pdx_s2_t *s, const char *rate, bool shortf, bool pilots)
     build_rotation(s);
     return NULL;
 }
+
+/* =====================================================================================================================
+ * C5 (P4b): codifica a passi brevi e mappatura "pigra" per il TS continuo con un solo core.
+ * Stesso algoritmo delle funzioni sopra (che restano il riferimento di S2LTEST); niente tabelle prbs/rot in RAM:
+ * lo scrambling BB e la rotazione PL si generano al volo. */
+#include "esp_attr.h"
+
+const char *pdx_s2l_init(pdx_s2_t *s, const char *rate, bool shortf, bool pilots, void *bch_mem, void *rows_mem,
+                         uint32_t rows_cap)
+{
+    memset(s, 0, sizeof(*s));
+    int ri = -1;
+    for (int i = 0; i < 11; i++) if (!strcmp(rate, RATES[i])) ri = i;
+    if (ri < 0 || (shortf && ri == 10)) return "rate non disponibile";
+    const pdx_s2_table_t *t = &pdx_s2_tables[shortf ? 11 + ri : ri];
+    if (t->q > rows_cap) return "rate troppo basso per la memoria LDPC";
+    s->tab = t;
+    s->shortf = shortf;
+    s->pilots = pilots;
+    s->kbch = t->kbch;
+    s->dfl = t->kbch - 80u;
+    s->nldpc = t->nldpc;
+    s->kldpc = t->kldpc;
+    s->nk = t->nldpc - t->kldpc;
+    s->slots = t->nldpc / 2u / 90u;
+    s->nsym = 90u * (s->slots + 1u) + (pilots ? 36u * ((s->slots - 1u) / 16u) : 0u);
+    s->bch_tab = bch_mem;
+    s->ldpc_rows = rows_mem;
+    memset(bch_mem, 0, 256u * sizeof(s->bch_tab[0]));
+    const uint8_t *g = shortf ? s2_bch_short_t12 : t->t == 12 ? s2_bch_normal_t12 : t->t == 10 ? s2_bch_normal_t10
+                                                                                            : s2_bch_normal_t8;
+    bch_build(s, g, shortf ? 168u : 16u * t->t);
+    if (s->deg != t->nbch - t->kbch) return "grado BCH";
+    for (uint32_t v = 0; v < 256u; v++) {
+        uint32_t r = 0, c = 0;
+        for (int k = 0; k < 8; k++) r |= ((v >> k) & 1u) << (7 - k);
+        bitrev8[v] = (uint8_t)r;
+        for (uint32_t k = 0; k < 4u; k++) {
+            const uint32_t b0 = (v >> (7u - 2u * k)) & 1u, b1 = (v >> (6u - 2u * k)) & 1u;
+            c |= ((b0 ^ 1u) | ((b1 ^ 1u) << 1)) << (2u * k);
+        }
+        sym4[v] = (uint8_t)c;
+    }
+    for (uint32_t i = 0; i < 16u; i++) rot_lut[i] = (uint8_t)rotate(i & 3u, i >> 2);
+    build_header(s, t->modcod);
+    return NULL;
+}
+
+/* PLHEADER del frame DUMMY (MODCOD 0, TYPE 0) */
+void pdx_s2l_dummy_header(const pdx_s2_t *s, uint8_t hdr[90])
+{
+    pdx_s2_t d = *s;
+    d.shortf = false;
+    d.pilots = false;
+    build_header(&d, 0);
+    memcpy(hdr, d.hdr, 90);
+}
+
+void pdx_s2l_job_start(pdx_s2l_job_t *j, pdx_s2_t *s, uint8_t *cw, uint16_t syncd)
+{
+    j->s = s;
+    j->cw = cw;
+    j->stage = 0;
+    j->i = 0;
+    j->prbs = 0xA9u;                                      /* 5.2.2: stadi 1..15 = 100101010000000 (bit k = stadio k+1) */
+    memset(j->r, 0, sizeof(j->r));
+    const uint32_t dfl = s->dfl;
+    cw[0] = 0xF0;
+    cw[1] = 0x00;
+    cw[2] = 1504 >> 8;
+    cw[3] = 1504 & 255;
+    cw[4] = (uint8_t)(dfl >> 8);
+    cw[5] = (uint8_t)dfl;
+    cw[6] = 0x47;
+    cw[7] = (uint8_t)(syncd >> 8);
+    cw[8] = (uint8_t)syncd;
+    cw[9] = pdx_s2_crc8(cw, 9);
+}
+
+#define S2L_SCR_BYTES 48u
+#define S2L_BCH_BYTES 32u
+#define S2L_XOR_BYTES 512u
+
+/* un passo (al massimo qualche migliaio di cicli); true quando la parola di codice è completa */
+IRAM_ATTR bool pdx_s2l_job_step(pdx_s2l_job_t *j)
+{
+    pdx_s2_t *s = j->s;
+    uint8_t *cw = j->cw;
+    const pdx_s2_table_t *t = s->tab;
+    switch (j->stage) {
+    case 0: {                                             /* BB scrambling al volo */
+        const uint32_t nb = s->kbch / 8u;
+        uint32_t i = j->i, st = j->prbs;
+        const uint32_t e = i + S2L_SCR_BYTES < nb ? i + S2L_SCR_BYTES : nb;
+        for (; i < e; i++) {
+            uint32_t by = 0;
+            for (int k = 0; k < 8; k++) {
+                const uint32_t b = ((st >> 13) ^ (st >> 14)) & 1u;
+                st = ((st << 1) | b) & 0x7FFFu;
+                by = (by << 1) | b;
+            }
+            cw[i] ^= (uint8_t)by;
+        }
+        j->i = i;
+        j->prbs = st;
+        if (i == nb) { j->stage = 1; j->i = 0; }
+        return false;
+    }
+    case 1: {                                             /* BCH */
+        const uint32_t nb = s->kbch / 8u;
+        uint32_t i = j->i;
+        uint32_t *r = j->r;
+        const uint32_t e = i + S2L_BCH_BYTES < nb ? i + S2L_BCH_BYTES : nb;
+        for (; i < e; i++) {
+            const uint32_t idx = (r[0] >> 24) ^ cw[i];
+            for (int k = 0; k < 5; k++) r[k] = (r[k] << 8) | (r[k + 1] >> 24);
+            r[5] <<= 8;
+            const uint32_t *tb = s->bch_tab[idx];
+            for (int k = 0; k < 6; k++) r[k] ^= tb[k];
+        }
+        j->i = i;
+        if (i == nb) {
+            for (uint32_t k = 0; k < s->deg / 8u; k++) cw[nb + k] = (uint8_t)(r[k >> 2] >> (24 - 8 * (k & 3)));
+            memset(s->ldpc_rows, 0, t->q * sizeof(s->ldpc_rows[0]));
+            j->stage = 2;
+            j->i = 0;
+            j->a = t->addr;
+        }
+        return false;
+    }
+    case 2: {                                             /* LDPC: un gruppo di 360 bit di informazione per passo */
+        const uint32_t r = j->i, q = t->q;
+        uint32_t (*P)[W360] = s->ldpc_rows;
+        const uint8_t *g8 = cw + 45u * r;
+        uint32_t G[W360] = {0}, D[2 * W360] = {0};
+        for (uint32_t i = 0; i < 45u; i++) G[i >> 2] |= (uint32_t)bitrev8[g8[i]] << ((i & 3u) * 8u);
+        for (uint32_t w = 0; w < W360; w++) D[w] = G[w];
+        for (uint32_t w = 0; w < W360; w++) {
+            D[11 + w] |= G[w] << 8;
+            D[12 + w] |= G[w] >> 24;
+        }
+        const uint32_t len = t->rowlen[r];
+        const uint16_t *a = j->a;
+        for (uint32_t k = 0; k < len; k++) {
+            const uint32_t x = a[k], c = x / q, row = x - c * q;
+            const uint32_t o = 360u - c, ow = o >> 5, ob = o & 31u;
+            uint32_t *pr = P[row];
+            if (ob) {
+                for (uint32_t w = 0; w < W360; w++) pr[w] ^= (D[ow + w] >> ob) | (D[ow + w + 1] << (32u - ob));
+            } else {
+                for (uint32_t w = 0; w < W360; w++) pr[w] ^= D[ow + w];
+            }
+        }
+        j->a = a + len;
+        if (++j->i == t->nrows) {
+            memset(cw + s->kldpc / 8u, 0, s->nk / 8u);
+            j->stage = 3;
+            j->i = 0;
+        }
+        return false;
+    }
+    case 3: {                                             /* parità in ordine lineare: una riga per passo */
+        const uint32_t row = j->i, q = t->q;
+        uint8_t *par = cw + s->kldpc / 8u;
+        uint32_t *pr = s->ldpc_rows[row];
+        pr[11] &= 0xFFu;
+        for (uint32_t w = 0; w < W360; w++) {
+            uint32_t v = pr[w];
+            while (v) {
+                const uint32_t b = (uint32_t)__builtin_ctz(v);
+                v &= v - 1u;
+                const uint32_t p = row + q * (w * 32u + b);
+                par[p >> 3] |= (uint8_t)(0x80u >> (p & 7));
+            }
+        }
+        if (++j->i == q) { j->stage = 4; j->i = 0; j->carry = 0; }
+        return false;
+    }
+    case 4: {                                             /* xor cumulativo della parità */
+        uint8_t *par = cw + s->kldpc / 8u;
+        const uint32_t nb = s->nk / 8u;
+        uint32_t i = j->i, carry = j->carry;
+        const uint32_t e = i + S2L_XOR_BYTES < nb ? i + S2L_XOR_BYTES : nb;
+        for (; i < e; i++) {
+            uint32_t v = par[i];
+            v ^= v >> 1;
+            v ^= v >> 2;
+            v ^= v >> 4;
+            if (carry) v ^= 0xFFu;
+            par[i] = (uint8_t)v;
+            carry = v & 1u;
+        }
+        j->i = i;
+        j->carry = carry;
+        if (i == nb) { j->stage = 5; return true; }
+        return false;
+    }
+    default:
+        return true;
+    }
+}
+
+/* ---- mappatura pigra: un simbolo alla volta dalla parola di codice (o frame DUMMY con cw = NULL) ---- */
+static uint32_t gold_xb0, gold_yb0;
+
+void pdx_s2l_map_init(void)
+{
+    uint32_t xb = 1u, yb = 0x3FFFFu;
+    for (uint32_t i = 0; i < 131072u; i++) {
+        xb = (xb >> 1) | ((((xb >> 7) ^ xb) & 1u) << 17);
+        yb = (yb >> 1) | ((((yb >> 10) ^ (yb >> 7) ^ (yb >> 5) ^ yb) & 1u) << 17);
+    }
+    gold_xb0 = xb;
+    gold_yb0 = yb;
+}
+
+void pdx_s2l_map_start(pdx_s2l_map_t *m, const pdx_s2_t *s, const uint8_t *cw, const uint8_t *hdr)
+{
+    m->cw = cw;
+    m->hdr = hdr;
+    m->k = 0;
+    m->d = 0;
+    m->blk = 0;
+    m->pil = 0;
+    m->xa = 1u;
+    m->ya = 0x3FFFFu;
+    m->xb = gold_xb0;
+    m->yb = gold_yb0;
+    if (cw) {
+        m->ndata = s->nldpc / 2u;
+        m->pilots = s->pilots;
+        m->nsym = s->nsym;
+    } else {                                              /* DUMMY: 36 slot di simboli non modulati */
+        m->ndata = 36u * 90u;
+        m->pilots = false;
+        m->nsym = 90u + 36u * 90u;
+    }
+}
+
+IRAM_ATTR uint32_t pdx_s2l_map_next(pdx_s2l_map_t *m)
+{
+    const uint32_t k = m->k++;
+    if (k < 90u) return m->hdr[k];
+    uint32_t code;
+    if (m->pil) {                                         /* blocco pilota: (1+j) */
+        m->pil--;
+        code = 3u;
+    } else {
+        const uint32_t d = m->d++;
+        if (m->cw) {
+            const uint32_t by = m->cw[d >> 2], sh = 6u - 2u * (d & 3u);
+            const uint32_t b0 = (by >> (sh + 1u)) & 1u, b1 = (by >> sh) & 1u;
+            code = (b0 ^ 1u) | ((b1 ^ 1u) << 1);
+        } else {
+            code = 3u;
+        }
+        if (m->pilots && ++m->blk == 1440u && m->d < m->ndata) { m->blk = 0; m->pil = 36u; }
+    }
+    const uint32_t za = (m->xa ^ m->ya) & 1u, zb = (m->xb ^ m->yb) & 1u;
+    m->xa = (m->xa >> 1) | ((((m->xa >> 7) ^ m->xa) & 1u) << 17);
+    m->ya = (m->ya >> 1) | ((((m->ya >> 10) ^ (m->ya >> 7) ^ (m->ya >> 5) ^ m->ya) & 1u) << 17);
+    m->xb = (m->xb >> 1) | ((((m->xb >> 7) ^ m->xb) & 1u) << 17);
+    m->yb = (m->yb >> 1) | ((((m->yb >> 10) ^ (m->yb >> 7) ^ (m->yb >> 5) ^ m->yb) & 1u) << 17);
+    return rot_lut[code | (((zb << 1) | za) << 2)];
+}

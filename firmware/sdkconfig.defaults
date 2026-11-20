@@ -25,3 +25,7 @@ CONFIG_LOG_DEFAULT_LEVEL_WARN=y
 # tabella delle partizioni con la partizione "symbols" (2,9 MB)
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# P4b: banco 0 libero per il TS continuo (la flash non viene mai scritta durante la TX)
+CONFIG_FREERTOS_PLACE_FUNCTIONS_INTO_FLASH=y
+CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH=y
+CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH=y

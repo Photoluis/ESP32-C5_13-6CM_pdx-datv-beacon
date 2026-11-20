@@ -88,6 +88,7 @@ unsigned pdx_rf_mhz(void) { return cur_mhz; }
 #include "soc/soc.h"
 #include "soc/gpio_reg.h"
 #include "esp_cpu.h"
+#include "esp_heap_caps.h"
 #include "esp_phy_cert_test.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -107,7 +108,8 @@ void pdx_rf_ref_tone(unsigned backoff, unsigned ms)
 }
 
 #define TONE_LUT 256u
-static int16_t tone_cos[TONE_LUT];
+static uint32_t shared_tab[128];            /* tono di DACP (256 x int16) o tabella di STREAM (2 x 64 parole): mai insieme */
+#define tone_cos ((int16_t *)shared_tab)
 
 static IRAM_ATTR __attribute__((noinline)) uint32_t dac_tone_loop(uint32_t step, uint32_t period, uint32_t n)
 {
@@ -224,7 +226,7 @@ void pdx_rf_owner_test(uint32_t out[4])
 }
 
 /* ------------------------------------------------------------------ P2g: ricerca del contatore (senza TX) */
-#define SCAN_N 128u
+#define SCAN_N 32u
 static uint32_t scan_a[SCAN_N], scan_b[SCAN_N], scan_t[16];
 
 /* replay avviato SENZA force_txon: legge due volte 0x600A9000.. e 16 volte il registro idx_off a intervalli di dt cicli */
@@ -328,8 +330,8 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
  * Intervallo j (j >= -1) = campioni [jN + N/2, (j+1)N + N/2) del flusso, banco B se j pari, A se j dispari.
  * Contenuto del banco dell'intervallo j: indice i < N/2 -> campione (j+1)N + i; i >= N/2 -> campione jN + i.
  * Il flusso è un tono di periodo L campioni (tabella stream_tab), quindi campione s -> stream_tab[s mod L]. */
-#define STREAM_L_MAX 256u
-static uint32_t stream_tab[2 * STREAM_L_MAX];
+#define STREAM_L_MAX 64u
+#define stream_tab shared_tab                       /* 2 * STREAM_L_MAX = 128 parole */
 static pdx_stream_res_t stream_res;
 
 /* copia a tratti contigui: la tabella è lunga 2L (tono ripetuto due volte), quindi da qualunque k si possono copiare
@@ -485,6 +487,151 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_sym(uint32_t *d, uint32
     fx.acc = acc; fx.rem = rem; fx.w = w;
 }
 
+/* ---- P4b: TS continuo generato sulla C5 (mux dal monoscopio ES in flash -> DVB-S2 a passi -> mappatura pigra) ----
+ * Doppio buffer delle parole di codice: il modulatore legge cw[cur], il produttore riempie cw[cur ^ 1] nei tempi morti
+ * del ciclo di scambio dei banchi (stream_loop). Memoria: cw0 e righe LDPC nel banco 0, cw1 e tabella BCH nella RAM LP
+ * (i banchi 1 e 2 sono della radio a turno durante la TX). Se il frame successivo non è pronto: frame DUMMY. */
+#include "dvbs2_enc.h"
+#include "ts_mux.h"
+
+#define LIVE_ROWS_CAP 45u                    /* q massimo: rate da 3/4 in su (frame normali) */
+#define LIVE_CW_BYTES 8100u                  /* 64800 bit */
+static uint32_t live_rows[LIVE_ROWS_CAP][12];
+static uint8_t live_cw0[LIVE_CW_BYTES];
+static uint8_t *live_cw1;                    /* RAM LP */
+static void *live_bch;                       /* RAM LP, 6144 B */
+static pdx_s2_t live_s2;
+static pdx_mux_t live_mux;
+static uint8_t live_hdr_dummy[90];
+static pdx_s2l_job_t live_job;
+static pdx_s2l_map_t live_map;
+static struct {
+    uint8_t *cw[2];
+    uint32_t cur, ready, pstage, fpos, pkt_pos, nb;
+    uint16_t syncd;
+    uint8_t prev_crc;
+    uint8_t pkt[188];
+    uint32_t frames, dummies, step_max, steps;
+} lv;
+
+/* un passo del produttore; false se non c'è niente da fare (frame successivo già pronto) */
+static IRAM_ATTR __attribute__((noinline)) bool live_producer_step(void)
+{
+    if (lv.ready) return false;
+    uint8_t *cw = lv.cw[lv.cur ^ 1u];
+    if (lv.pstage == 0) {                                  /* nuovo DATA FIELD: SYNCD = bit fino al primo pacchetto */
+        const uint32_t to_start = (188u - lv.pkt_pos) % 188u;
+        lv.syncd = to_start < lv.nb ? (uint16_t)(to_start * 8u) : 0xFFFFu;
+        lv.fpos = 0;
+        lv.pstage = 1;
+        return true;
+    }
+    if (lv.pstage == 1) {                                  /* al massimo due pacchetti TS per passo */
+        for (int n = 0; n < 2 && lv.fpos < lv.nb; n++) {
+            if (lv.pkt_pos == 188u) {
+                uint8_t raw[188];
+                pdx_mux_next(&live_mux, raw);
+                lv.pkt[0] = lv.prev_crc;
+                memcpy(lv.pkt + 1, raw + 1, 187);
+                lv.prev_crc = pdx_s2_crc8(raw + 1, 187);
+                lv.pkt_pos = 0;
+            }
+            uint32_t k = 188u - lv.pkt_pos;
+            if (k > lv.nb - lv.fpos) k = lv.nb - lv.fpos;
+            memcpy(cw + 10 + lv.fpos, lv.pkt + lv.pkt_pos, k);
+            lv.fpos += k;
+            lv.pkt_pos += k;
+        }
+        if (lv.fpos == lv.nb) {
+            pdx_s2l_job_start(&live_job, &live_s2, cw, lv.syncd);
+            lv.pstage = 2;
+        }
+        return true;
+    }
+    if (pdx_s2l_job_step(&live_job)) {
+        lv.ready = 1;
+        lv.pstage = 0;
+        lv.frames++;
+    }
+    return true;
+}
+
+/* prossimo codice QPSK del flusso DVB-S2 (bit 0 = I, bit 1 = Q, 1 = +1) */
+static IRAM_ATTR __attribute__((noinline)) uint32_t live_next_code(void)
+{
+    if (pdx_s2l_map_done(&live_map)) {
+        if (lv.ready) {
+            lv.cur ^= 1u;
+            lv.ready = 0;
+            pdx_s2l_map_start(&live_map, &live_s2, lv.cw[lv.cur], live_s2.hdr);
+        } else {
+            lv.dummies++;
+            pdx_s2l_map_start(&live_map, &live_s2, NULL, live_hdr_dummy);
+        }
+    }
+    return pdx_s2l_map_next(&live_map);
+}
+
+static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_live(uint32_t *d, uint32_t cnt)
+{
+    uint32_t p = qg.p, hi = qg.hi, hq = qg.hq;
+    const uint32_t qx = sym_qinv, ns = qsps, hold = qg.hold;
+    uint32_t acc = fx.acc, rem = fx.rem, w = fx.w;
+    const uint32_t fr = fx.fr, sr = fx.sr;
+    uint32_t *const end = d + cnt;
+    while (rem && d < end) { *d++ = w; rem--; }
+    while (d < end) {
+        w = (uint32_t)qpsk_t[p][hi] | ((uint32_t)qpsk_t[p][hq] << 10);
+        uint32_t c = hold;
+        if (p == 0) {
+            acc += fr;
+            if (acc >= sr) { acc -= sr; c++; }
+        }
+        if (++p == ns) {
+            p = 0;
+            const uint32_t s = live_next_code();
+            hi = ((hi << 1) | (~s & 1u)) & 255u;
+            hq = ((hq << 1) | ((((~s) >> 1) ^ qx) & 1u)) & 255u;
+        }
+        const uint32_t room = (uint32_t)(end - d);
+        if (c == 8 && room >= 8) {
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
+            d += 8;
+        } else {
+            const uint32_t k = c < room ? c : room;
+            for (uint32_t i = 0; i < k; i++) *d++ = w;
+            rem = c - k;
+        }
+    }
+    qg.p = p; qg.hi = hi; qg.hq = hq;
+    fx.acc = acc; fx.rem = rem; fx.w = w;
+}
+
+/* prepara memoria, codificatore e mux; produce il primo frame (senza fretta). NULL se riuscito */
+static const char *live_prepare(const uint8_t *es_file, uint32_t sr, const char *rate, const char *service,
+                                const char *provider)
+{
+    if (!live_bch) live_bch = heap_caps_malloc(6144, MALLOC_CAP_RTCRAM);
+    if (!live_cw1) live_cw1 = heap_caps_malloc(LIVE_CW_BYTES, MALLOC_CAP_RTCRAM);
+    if (!live_bch || !live_cw1) return "memoria LP";
+    const char *e = pdx_s2l_init(&live_s2, rate, false, true, live_bch, live_rows, LIVE_ROWS_CAP);
+    if (e) return e;
+    pdx_s2l_dummy_header(&live_s2, live_hdr_dummy);
+    pdx_s2l_map_init();
+    e = pdx_mux_init(&live_mux, es_file, pdx_s2_ts_bitrate(&live_s2, sr), service, provider, false);
+    if (e) return e;
+    memset(&lv, 0, sizeof(lv));
+    lv.cw[0] = live_cw0;
+    lv.cw[1] = live_cw1;
+    lv.cur = 1;                                            /* il primo frame va in cw[0] */
+    lv.pkt_pos = 188u;
+    lv.nb = live_s2.dfl / 8u;
+    while (!lv.ready) live_producer_step();
+    memset(&live_map, 0, sizeof(live_map));                /* k = nsym = 0: al primo simbolo passa a cw[0] */
+    lv.frames = 0;
+    return NULL;
+}
+
 /* banco dell'intervallo j: prima la metà alta (suona prima), poi la bassa */
 static IRAM_ATTR __attribute__((noinline)) void qpsk_fill(volatile uint32_t *dst, int32_t j, uint32_t n, uint32_t l)
 {
@@ -493,6 +640,11 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_fill(volatile uint32_t *dst
     if (stream_kind == 2) {
         qpsk_gen_sym(d + n / 2u, n - n / 2u);
         qpsk_gen_sym(d, n / 2u);
+        return;
+    }
+    if (stream_kind == 3) {
+        qpsk_gen_live(d + n / 2u, n - n / 2u);
+        qpsk_gen_live(d, n / 2u);
         return;
     }
     qpsk_gen(d + n / 2u, n - n / 2u);
@@ -521,6 +673,16 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
         any_fill((j & 1u) ? PDX_PP_B : PDX_PP_A, (int32_t)j + 1, n, l);      /* banco appena liberato: intervallo j+1 */
         const uint32_t fc = esp_cpu_get_cycle_count() - f0;
         if (fc > stream_res.fill_max) stream_res.fill_max = fc;
+        if (stream_kind == 3) {                                   /* tempi morti: passi del produttore DVB-S2 */
+            const uint32_t dl = tsw + per - 9600u;                /* margine 40 us prima dello scambio */
+            while ((int32_t)(esp_cpu_get_cycle_count() - dl) < 0) {
+                const uint32_t s0 = esp_cpu_get_cycle_count();
+                if (!live_producer_step()) break;
+                const uint32_t sc = esp_cpu_get_cycle_count() - s0;
+                if (sc > lv.step_max) lv.step_max = sc;
+                lv.steps++;
+            }
+        }
         if ((int32_t)(esp_cpu_get_cycle_count() - (tsw + per)) > 0) stream_res.overruns++;
         tsw += per;
     }
@@ -543,7 +705,8 @@ static void stream_run(const pp_req_t *q)
         qpsk_build(q->amp);
         qg.p = 0; qg.hi = 0; qg.hq = 0; qg.lfsr = 0x5A5A5Au; qg.hold = l;   /* per il QPSK l = H */
         sym_pos = 0;
-        if (stream_kind == 2) qpsk_gen_sym((uint32_t *)PDX_PP_A, n / 2u);
+        if (stream_kind == 3) qpsk_gen_live((uint32_t *)PDX_PP_A, n / 2u);
+        else if (stream_kind == 2) qpsk_gen_sym((uint32_t *)PDX_PP_A, n / 2u);
         else qpsk_gen((uint32_t *)PDX_PP_A, n / 2u);   /* intervallo -1: suona solo la metà bassa di A */
         qpsk_fill(PDX_PP_B, 0, n, l);
     } else {
@@ -729,6 +892,116 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
     esp_wifi_set_promiscuous(true);
     stream_kind = 0;
     sym_data = base;
+}
+
+/* ---- P4b: comandi del TS continuo ---- */
+#define LIVE_ES_PART_OFF 0x180000u            /* file PDXES001 nella partizione "symbols" (assoluto 0x290000) */
+#define LIVE_ES_MAP      0x170000u
+static const uint8_t *live_es;
+static esp_partition_mmap_handle_t live_es_mh;
+
+static const char *live_es_open(void)
+{
+    if (live_es) return NULL;
+    const esp_partition_t *pt = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "symbols");
+    if (!pt) return "partizione symbols";
+    const void *ptr;
+    if (esp_partition_mmap(pt, LIVE_ES_PART_OFF, LIVE_ES_MAP, ESP_PARTITION_MMAP_DATA, &ptr, &live_es_mh) != ESP_OK)
+        return "mmap ES";
+    if (memcmp(ptr, "PDXES001", 8) != 0) { esp_partition_munmap(live_es_mh); return "file ES assente"; }
+    live_es = ptr;
+    return NULL;
+}
+
+void pdx_rf_live_stats(pdx_live_stats_t *st)
+{
+    st->frames = lv.frames;
+    st->dummies = lv.dummies;
+    st->step_max = lv.step_max;
+    st->steps = lv.steps;
+    st->ts_rate = live_mux.rate;
+    st->null_pk = live_mux.stats_null;
+    st->video_pk = live_mux.stats_video;
+    st->audio_pk = live_mux.stats_audio;
+}
+
+const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r)
+{
+    if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
+    if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
+    *r = (pdx_stream_res_t){0};
+    if (sr < 100000u || sr > 1000000u) return "SR";
+    const char *e = live_es_open();
+    if (e) return e;
+    e = live_prepare(live_es, sr, "3/4", "IZ7PDX", "IZ7PDX BEACON C5");
+    if (e) return e;
+    const uint32_t tot = 40000000u / sr;
+    qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
+    const uint32_t hold = tot / qsps;
+    fx.sr = sr;
+    fx.fr = 40000000u - qsps * hold * sr;
+    fx.acc = 0; fx.rem = 0; fx.w = 0;
+    if (fx.fr >= sr) return "SR non realizzabile";
+    sym_qinv = qinv ? 1u : 0u;
+    stream_kind = 3;
+    pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 16000, .l = hold, .lat = lat, .amp = amp, .sres = r,
+                        .caller = xTaskGetCurrentTaskHandle()};
+    esp_wifi_set_promiscuous(false);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    xTaskNotifyGive(pp_task);
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    esp_wifi_set_promiscuous(true);
+    stream_kind = 0;
+    return NULL;
+}
+
+/* S2LTEST (senza RF): nframes frame del percorso a passi + mappatura pigra confrontati con pdx_s2_frame sullo stesso
+ * DATA FIELD. Il riferimento lavora nel banco 1 (libero senza TX). */
+const char *pdx_rf_s2ltest(uint32_t nframes, uint32_t *ok, uint32_t *bad_sym, uint32_t *steps_max_cyc)
+{
+    *ok = 0;
+    *bad_sym = 0;
+    *steps_max_cyc = 0;
+    const char *e = live_es_open();
+    if (e) return e;
+    e = live_prepare(live_es, 333000u, "3/4", "IZ7PDX", "IZ7PDX BEACON C5");
+    if (e) return e;
+    /* il primo frame è già in cw[0]: rifà il percorso frame per frame salvando il DATA FIELD prima della codifica */
+    uint8_t *field = (uint8_t *)0x40830000u;              /* banco 1, metà alta */
+    uint8_t *ref = (uint8_t *)0x40832000u;
+    for (uint32_t f = 0; f < nframes; f++) {
+        lv.ready = 0;
+        lv.cur ^= 1u;                                      /* il produttore scrive in cw[cur ^ 1] */
+        uint8_t *cw = lv.cw[lv.cur ^ 1u];
+        while (lv.pstage != 2) live_producer_step();       /* DATA FIELD pronto, job avviato */
+        memcpy(field, cw + 10, lv.nb);
+        const uint16_t syncd = lv.syncd;
+        while (!lv.ready) {
+            const uint32_t s0 = esp_cpu_get_cycle_count();
+            live_producer_step();
+            const uint32_t sc = esp_cpu_get_cycle_count() - s0;
+            if (sc > *steps_max_cyc) *steps_max_cyc = sc;
+        }
+        /* riferimento: codificatore originale con lavoro nel banco 1 */
+        pdx_s2_t rs;
+        pdx_s2_work_reset();
+        e = pdx_s2_init(&rs, "3/4", false, true);
+        if (e) return e;
+        memset(ref, 0, rs.nsym / 4u + 4u);
+        pdx_s2_out_t out = {.buf = ref};
+        pdx_s2_frame(&rs, field, syncd, &out);
+        pdx_s2l_map_t m;
+        pdx_s2l_map_start(&m, &live_s2, cw, live_s2.hdr);
+        uint32_t bad = 0;
+        for (uint32_t k = 0; k < rs.nsym; k++) {
+            const uint32_t a = pdx_s2l_map_next(&m), b = (ref[k >> 2] >> ((k & 3u) * 2u)) & 3u;
+            if (a != b) bad++;
+        }
+        if (!pdx_s2l_map_done(&m)) bad++;
+        *bad_sym += bad;
+        if (!bad) (*ok)++;
+    }
+    return NULL;
 }
 
 unsigned pdx_rf_capture(unsigned n, unsigned div, uint32_t *us)

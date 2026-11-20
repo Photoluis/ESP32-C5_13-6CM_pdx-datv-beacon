@@ -28,7 +28,7 @@
 #include "freertos/task.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P3b-S2"
+#define FW_VERSION "C5-P4b-LIVE"
 
 static bool tx_armed;
 
@@ -133,7 +133,7 @@ void app_main(void)
             if (sscanf(p, "%*s %x %x %u", &cv, &io, &dt) != 3) { printf("ERR uso: SCAN <ctrl_hex> <idx_off_hex> <dt>\n"); continue; }
             uint32_t *a, *b, *t;
             pdx_rf_scan(cv, io, dt, &a, &b, &t);
-            for (unsigned i = 0; i < 128; i++)
+            for (unsigned i = 0; i < 32; i++)
                 if (a[i] != b[i]) printf("DIFF +%03x riposo %08" PRIx32 " corsa %08" PRIx32 "\n", 4 * i, a[i], b[i]);
             printf("SERIE +%03x ogni %u cicli:", io & 0x1FC, dt);
             for (unsigned i = 0; i < 16; i++) printf(" %08" PRIx32, t[i]);
@@ -150,6 +150,34 @@ void app_main(void)
             pdx_rf_stream(n, l, amp, ms, lat, &r);
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
+        }
+        else if (!strcmp(cmd, "S2LTEST")) {
+            /* S2LTEST <frame>: percorso a passi + mappatura pigra contro il codificatore di riferimento. Nessuna RF. */
+            uint32_t ok, bad, smax;
+            const char *e = pdx_rf_s2ltest(k >= 2 ? a : 5, &ok, &bad, &smax);
+            if (e) printf("ERR s2ltest %s\n", e);
+            else printf("OK s2ltest frame uguali %" PRIu32 "/%u simboli diversi %" PRIu32 " passo max %" PRIu32 " cicli\n",
+                        ok, k >= 2 ? a : 5, bad, smax);
+        }
+        else if (!strcmp(cmd, "S2LIVE")) {
+            /* S2LIVE <sr> <amp> <ms> [lat] [qinv]: TS continuo generato sulla C5, stop col tasto BOOT */
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            unsigned sr, ms, lat = 50, qinv = 0;
+            int amp;
+            if (sscanf(p, "%*s %u %d %u %u %u", &sr, &amp, &ms, &lat, &qinv) < 3) { printf("ERR uso: S2LIVE <sr> <amp> <ms> [lat] [qinv]\n"); continue; }
+            printf("TX S2LIVE %u MHz SR %u amp %d ms %u (stop: BOOT)\n", pdx_rf_mhz(), sr, amp, ms);
+            fflush(stdout);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            pdx_stream_res_t r;
+            const char *e = pdx_rf_s2live(sr, amp, ms, lat, qinv, &r);
+            if (e) { printf("ERR s2live %s\n", e); continue; }
+            pdx_live_stats_t st;
+            pdx_rf_live_stats(&st);
+            printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " ritardo max %" PRIu32 " sforamenti %" PRIu32
+                   " fermato %" PRIu32 "\n", r.intervals, r.fill_max, r.late_max, r.overruns, r.stopped);
+            printf("frame %" PRIu32 " DUMMY %" PRIu32 " passi %" PRIu32 " passo max %" PRIu32 " cicli TS %.0f bit/s "
+                   "pacchetti nulli %" PRIu32 " video %" PRIu32 " audio %" PRIu32 "\nOK s2live\n", st.frames, st.dummies,
+                   st.steps, st.step_max, st.ts_rate, st.null_pk, st.video_pk, st.audio_pk);
         }
         else if (!strcmp(cmd, "S2TEST")) {
             /* codificatore DVB-S2 della C5 contro encoder.py (42 casi a 0x310000), con i tempi per frame. Nessuna RF. */
