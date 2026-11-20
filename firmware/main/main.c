@@ -151,6 +151,12 @@ void app_main(void)
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
         }
+        else if (!strcmp(cmd, "S2TEST")) {
+            /* codificatore DVB-S2 della C5 contro encoder.py (42 casi a 0x310000), con i tempi per frame. Nessuna RF. */
+            extern int pdx_s2_selftest(void);
+            pdx_s2_selftest();
+            printf("OK s2test\n");
+        }
         else if (!strcmp(cmd, "SYMINFO")) {
             uint32_t sr;
             char lab[41];
