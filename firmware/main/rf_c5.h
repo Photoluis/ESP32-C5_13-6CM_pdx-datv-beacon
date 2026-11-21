@@ -12,7 +12,8 @@
 #define PDX_C5_ANT_GPIO    26            /* commutatore d'antenna della ESP32-C5-Zero (ceramica / IPEX) */
 
 esp_err_t pdx_rf_init(void);                  /* Wi-Fi in modo NULL: accende e calibra la PHY */
-bool pdx_rf_tune(unsigned mhz);          /* PLL sulla frequenza (MHz interi) */
+bool pdx_rf_tune(unsigned mhz);
+bool pdx_rf_dirty(void);                 /* la radio è stata manipolata (sintonia/TX): l'access point vuole un riavvio */          /* PLL sulla frequenza (MHz interi) */
 unsigned pdx_rf_mhz(void);
 /* cattura n parole (coppie I/Q) nel banco; div = divisore della frequenza di campionamento (0 = massima);
  * restituisce il numero di parole scritte (sentinella sovrascritta) e la durata in us */

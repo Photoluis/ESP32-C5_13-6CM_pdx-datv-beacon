@@ -37,11 +37,15 @@ void pdx_bcn_quick_clear(void);
 
 /* attesa annullabile (true = scaduta senza annullamento: si parte) */
 bool pdx_bcn_wait(unsigned s);
-/* ciclo del beacon dalla banda start_band (0 = 13 cm, 1 = 6 cm) fino allo STOP (BOOT durante la TX; carattere seriale,
- * BOOT o STOP della dashboard nelle pause). Nelle pause accende la dashboard; alla fine della pausa, se l'access point
- * è stato acceso, la scheda si riavvia e riprende dalla banda successiva (radio pulita, come il beacon S3). */
-void pdx_bcn_run(const pdx_bcn_cfg_t *c, int start_band, uint32_t cycle);
-/* riavvio con ripresa del ciclo (stato in memoria RTC) */
-void pdx_bcn_request_run(int start_band, uint32_t cycle);
-/* true se l'avvio è una ripresa del ciclo: banda e numero del ciclo */
-bool pdx_bcn_resume(int *band, uint32_t *cycle);
+/* Il ciclo è una sequenza di riavvii, ognuno con la radio pulita per il suo compito (stato in memoria RTC):
+ *   RUN   TX di una banda, poi riavvio in PAUSE (o in CONFIG se fermato con BOOT)
+ *   PAUSE access point e dashboard per la pausa, poi riavvio in RUN sulla banda seguente (o CONFIG se STOP)
+ *   CONFIG / accensione: access point e dashboard, nessuna TX finché non arriva START (o la partenza automatica) */
+enum { PDX_BCN_BOOT_NONE = 0, PDX_BCN_BOOT_RUN = 1, PDX_BCN_BOOT_PAUSE = 2, PDX_BCN_BOOT_CONFIG = 3 };
+void pdx_bcn_reboot(int mode, int band, uint32_t cycle);
+int pdx_bcn_boot_mode(int *band, uint32_t *cycle);     /* modo del riavvio software (NONE dopo un'accensione) */
+void pdx_bcn_request_run(int start_band, uint32_t cycle);   /* = pdx_bcn_reboot(RUN, ...) */
+/* TX della banda band (riavvia sempre alla fine: PAUSE o CONFIG) */
+void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int band, uint32_t cycle);
+/* pausa dopo la banda band: dashboard attiva; alla fine riavvia in RUN sulla banda seguente; false = STOP */
+bool pdx_bcn_pause(const pdx_bcn_cfg_t *c, int band, uint32_t cycle);

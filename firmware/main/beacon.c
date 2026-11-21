@@ -185,27 +185,33 @@ void pdx_bcn_quick_clear(void)
     quick_set(0);
 }
 
-/* ---- ripresa del ciclo dopo il riavvio (memoria RTC, sopravvive a esp_restart, non allo spegnimento) ---- */
-typedef struct { uint32_t magic, cycle; int32_t band; } bcn_rtc_t;
-static RTC_NOINIT_ATTR bcn_rtc_t rtc_resume;
+/* ---- stato del ciclo attraverso i riavvii (memoria RTC: sopravvive a esp_restart, non allo spegnimento) ---- */
+typedef struct { uint32_t magic, cycle; int32_t band, mode; } bcn_rtc_t;
+static RTC_NOINIT_ATTR bcn_rtc_t rtc_state;
 #define RTC_MAGIC 0x50445843u                               /* "PDXC" */
 
-void pdx_bcn_request_run(int start_band, uint32_t cycle)
+void pdx_bcn_reboot(int mode, int band, uint32_t cycle)
 {
-    rtc_resume = (bcn_rtc_t){.magic = RTC_MAGIC, .cycle = cycle, .band = start_band};
-    printf("BEACON riavvio per la TX (radio pulita), riprende dalla banda %s\n", start_band ? "6 cm" : "13 cm");
+    rtc_state = (bcn_rtc_t){.magic = RTC_MAGIC, .cycle = cycle, .band = band, .mode = mode};
+    static const char *nm[] = {"", "TX", "PAUSA", "CONFIG"};
+    printf("BEACON riavvio -> %s (banda %s, ciclo %" PRIu32 ")\n", nm[mode & 3], band ? "6 cm" : "13 cm", cycle);
     fflush(stdout);
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
 }
 
-bool pdx_bcn_resume(int *band, uint32_t *cycle)
+void pdx_bcn_request_run(int start_band, uint32_t cycle) { pdx_bcn_reboot(PDX_BCN_BOOT_RUN, start_band, cycle); }
+
+int pdx_bcn_boot_mode(int *band, uint32_t *cycle)
 {
-    if (rtc_resume.magic != RTC_MAGIC || esp_reset_reason() != ESP_RST_SW) { rtc_resume.magic = 0; return false; }
-    *band = rtc_resume.band;
-    *cycle = rtc_resume.cycle;
-    rtc_resume.magic = 0;
-    return true;
+    int m = PDX_BCN_BOOT_NONE;
+    if (rtc_state.magic == RTC_MAGIC && esp_reset_reason() == ESP_RST_SW) {
+        m = (int)rtc_state.mode;
+        *band = rtc_state.band;
+        *cycle = rtc_state.cycle;
+    }
+    rtc_state.magic = 0;
+    return m;
 }
 
 /* ---- attese con STOP: un carattere dalla seriale o il tasto BOOT ---- */
@@ -234,47 +240,56 @@ static bool pause_with_stop(unsigned s)
     return true;
 }
 
-void pdx_bcn_run(const pdx_bcn_cfg_t *c, int start_band, uint32_t cycle)
+static void next_band(const pdx_bcn_cfg_t *c, int band, uint32_t cycle, int *nb, uint32_t *nc)
+{
+    if (band == 0 && (c->bands & 2)) { *nb = 1; *nc = cycle; return; }
+    *nb = (c->bands & 1) ? 0 : 1;
+    *nc = cycle + 1;
+}
+
+void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
 {
     pdx_bcn_quick_clear();
+    if (!(c->bands & (1u << b))) { int nb; uint32_t nc; next_band(c, b, cycle, &nb, &nc); pdx_bcn_request_run(nb, nc); }
     const double lvl = 20.0 * log10((double)c->amp / 480.0);
-    if (cycle == 0) cycle = 1;
-    for (;; cycle++) {
-        for (int b = start_band; b < 2; b++) {
-            if (!(c->bands & (1u << b))) continue;
-            const uint32_t fk = b == 0 ? c->f13_khz : c->f6_khz;
-            char prov[40];
-            snprintf(prov, sizeof prov, "BEACON %" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
-            pdx_rf_live_source(b == 0 ? 1 : 0, c->call, prov);
-            if (!pdx_rf_tune(fk / 1000u)) { printf("BEACON ERR frequenza %" PRIu32 " kHz\n", fk); return; }
-            printf("BEACON ciclo %" PRIu32 " TX %s %" PRIu32 ".%03" PRIu32 " MHz %u s (BOOT ferma)\n", cycle,
-                   b == 0 ? "13cm" : "6cm", fk / 1000u, fk % 1000u, c->tx_s);
-            fflush(stdout);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            antenna_route(c, b, true);
-            if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
-            pdx_stream_res_t r;
-            const char *e = pdx_rf_s2live(c->sr, c->amp, c->tx_s * 1000u, 50, 0, 0, &r);
-            pdx_led_idle();
-            antenna_route(c, b, false);
-            pdx_live_stats_t st;
-            pdx_rf_live_stats(&st);
-            if (e) { printf("BEACON ERR %s\n", e); return; }
-            printf("BEACON fine TX: frame %" PRIu32 " DUMMY %" PRIu32 " ritardo max %" PRIu32 " sforamenti %" PRIu32 "\n",
-                   st.frames, st.dummies, r.late_max, r.overruns);
-            if (r.stopped) { printf("BEACON fermato con BOOT\n"); return; }
-            /* pausa: dashboard accesa (access point), poi riavvio per avere la radio pulita alla TX seguente */
-            char stt[48];
-            snprintf(stt, sizeof stt, "PAUSA dopo %s, ciclo %" PRIu32, b == 0 ? "13 cm" : "6 cm", cycle);
-            pdx_web_set_state(stt);
-            const bool web = pdx_web_start();
-            if (!pause_with_stop(c->pause_s)) {
-                pdx_web_set_state("CONFIG (beacon fermato)");
-                printf("BEACON fermato: modo configurazione\n");
-                return;
-            }
-            if (web) pdx_bcn_request_run(b == 0 && (c->bands & 2) ? 1 : 0, b == 0 && (c->bands & 2) ? cycle : cycle + 1);
-        }
-        start_band = 0;
+    const uint32_t fk = b == 0 ? c->f13_khz : c->f6_khz;
+    char prov[40];
+    snprintf(prov, sizeof prov, "BEACON %" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
+    pdx_rf_live_source(b == 0 ? 1 : 0, c->call, prov);
+    if (!pdx_rf_tune(fk / 1000u)) { printf("BEACON ERR frequenza %" PRIu32 " kHz\n", fk); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    printf("BEACON ciclo %" PRIu32 " TX %s %" PRIu32 ".%03" PRIu32 " MHz %u s (BOOT ferma)\n", cycle,
+           b == 0 ? "13cm" : "6cm", fk / 1000u, fk % 1000u, c->tx_s);
+    fflush(stdout);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    antenna_route(c, b, true);
+    if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
+    pdx_stream_res_t r;
+    const char *e = pdx_rf_s2live(c->sr, c->amp, c->tx_s * 1000u, 50, 0, 0, &r);
+    pdx_led_idle();
+    antenna_route(c, b, false);
+    pdx_live_stats_t st;
+    pdx_rf_live_stats(&st);
+    if (e) { printf("BEACON ERR %s\n", e); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    printf("BEACON fine TX: frame %" PRIu32 " DUMMY %" PRIu32 " ritardo max %" PRIu32 " sforamenti %" PRIu32 "\n",
+           st.frames, st.dummies, r.late_max, r.overruns);
+    if (r.stopped) { printf("BEACON fermato con BOOT\n"); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    pdx_bcn_reboot(PDX_BCN_BOOT_PAUSE, b, cycle);
+}
+
+bool pdx_bcn_pause(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
+{
+    char stt[48];
+    snprintf(stt, sizeof stt, "PAUSA dopo %s, ciclo %" PRIu32, b == 0 ? "13 cm" : "6 cm", cycle);
+    pdx_web_set_state(stt);
+    pdx_web_start();
+    if (!pause_with_stop(c->pause_s)) {
+        pdx_web_set_state("CONFIG (beacon fermato)");
+        printf("BEACON fermato: modo configurazione\n");
+        return false;
     }
+    int nb;
+    uint32_t nc;
+    next_band(c, b, cycle, &nb, &nc);
+    pdx_bcn_request_run(nb, nc);
+    return true;
 }

@@ -65,9 +65,8 @@ esp_err_t pdx_rf_init(void)
     TRY(esp_wifi_set_ps(WIFI_PS_NONE));
     TRY(esp_wifi_set_promiscuous(true));
     TRY(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
-    pdx_rf_tune(2412);
-    uint32_t us;
-    pdx_rf_capture(256, 0, &us);              /* configura il blocco dump (serve anche al replay del DAC) */
+    /* 21/11 (B2): niente sintonia né cattura qui. L'access point della dashboard non funziona con la radio manipolata
+     * (come sul beacon S3): la preparazione RF si fa alla prima pdx_rf_tune, solo quando serve davvero */
     return ESP_OK;
 }
 
@@ -80,12 +79,20 @@ static void rx_idle(void)
     phy_set_rxclk_en(1);
 }
 
+static bool rf_hw_ready;                     /* cattura di preparazione già fatta (blocco dump configurato) */
+bool pdx_rf_dirty(void) { return rf_hw_ready; }
+
 bool pdx_rf_tune(unsigned mhz)
 {
     if (mhz < 2300 || (mhz > 2500 && mhz < 4900) || mhz > 5900) return false;
     phy_set_chanfreq(mhz, 0);
     rx_idle();
     cur_mhz = mhz;
+    if (!rf_hw_ready) {                          /* prima sintonia: cattura breve che configura il blocco dump */
+        rf_hw_ready = true;
+        uint32_t us;
+        pdx_rf_capture(256, 0, &us);
+    }
     return true;
 }
 

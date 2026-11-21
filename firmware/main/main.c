@@ -32,7 +32,7 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B2-WEB"
+#define FW_VERSION "C5-B2b-WEB"
 
 static bool tx_armed;
 
@@ -119,11 +119,15 @@ void app_main(void)
     static pdx_bcn_cfg_t bcfg;
     pdx_bcn_load(&bcfg);
     pdx_web_init(&bcfg, FW_VERSION);
-    int rb;
-    uint32_t rc;
-    if (pdx_bcn_resume(&rb, &rc)) {                     /* riavvio dopo una pausa con la dashboard: si riprende */
-        printf("BEACON ripresa del ciclo %" PRIu32 " dalla banda %s\n", rc, rb ? "6 cm" : "13 cm");
-        pdx_bcn_run(&bcfg, rb, rc);
+    int rb = 0;
+    uint32_t rc = 1;
+    const int bm = pdx_bcn_boot_mode(&rb, &rc);
+    if (bm == PDX_BCN_BOOT_RUN) {                        /* TX di una banda (radio pulita dal riavvio) */
+        pdx_bcn_segment(&bcfg, rb, rc);                   /* non ritorna: riavvia in PAUSA o CONFIG */
+    } else if (bm == PDX_BCN_BOOT_PAUSE) {               /* pausa con la dashboard */
+        pdx_bcn_pause(&bcfg, rb, rc);                     /* ritorna solo se fermato: si resta in configurazione */
+    } else if (bm == PDX_BCN_BOOT_CONFIG) {
+        printf("BEACON modo configurazione\n");
     } else {
         const bool quick = pdx_bcn_quick_boot();
         pdx_bcn_print(&bcfg);
@@ -131,12 +135,14 @@ void app_main(void)
             printf("BEACON doppia accensione: modo configurazione (nessuna TX)\n");
             pdx_bcn_quick_clear();
         } else if (bcfg.auto_tx) {
-            if (pdx_bcn_wait(bcfg.wait_s)) pdx_bcn_run(&bcfg, 0, 1);
+            pdx_web_set_state("ATTESA prima del beacon");
+            pdx_web_start();                              /* la dashboard c'è già durante l'attesa */
+            if (pdx_bcn_wait(bcfg.wait_s) && !pdx_web_take_stop()) pdx_bcn_request_run(0, 1);
         } else {
             printf("BEACON partenza automatica OFF (SET auto 1, SAVE per abilitarla)\n");
         }
     }
-    /* modo configurazione: dashboard sempre accesa */
+    /* modo configurazione: dashboard sempre accesa (radio pulita: nessuna sintonia fatta in questo avvio) */
     pdx_web_set_state("CONFIG");
     pdx_web_start();
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
@@ -205,9 +211,7 @@ void app_main(void)
         else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
         else if (!strcmp(cmd, "BEACON")) {
             if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
-            if (pdx_web_running()) pdx_bcn_request_run(0, 1);   /* access point acceso: riavvio per la radio pulita */
-            pdx_bcn_run(&bcfg, 0, 1);
-            printf("OK beacon\n");
+            pdx_bcn_request_run(0, 1);                    /* riavvio: TX con la radio pulita */
         }
         else if (!strcmp(cmd, "S2LTEST")) {
             /* S2LTEST <frame>: percorso a passi + mappatura pigra contro il codificatore di riferimento. Nessuna RF. */
