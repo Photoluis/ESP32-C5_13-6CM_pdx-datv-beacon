@@ -11,6 +11,7 @@
 #include <stdio.h>
 
 #include "esp_event.h"
+#include "esp_heap_caps_init.h"
 #include "esp_netif.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
@@ -79,6 +80,21 @@ static void rx_idle(void)
     phy_set_rxclk_en(1);
 }
 
+/* 21/11 (B2b): negli avvii senza TX (configurazione, pausa con la dashboard) il banco B del modulatore (48 KB) va al
+ * heap: l'access point ha bisogno di RAM con DMA per i pacchetti TCP (con 2,8 KB liberi la pagina non arrivava).
+ * Il prestito vale fino al riavvio: in questo avvio i comandi che usano il banco B vengono rifiutati. */
+static bool bankB_lent;
+bool pdx_rf_lend_bankB(void)
+{
+    if (bankB_lent) return true;
+    if (heap_caps_add_region(0x40840000, 0x4084C000) != ESP_OK) return false;
+    bankB_lent = true;
+    printf("RF banco B (48 KB) prestato al heap fino al prossimo riavvio\n");
+    return true;
+}
+bool pdx_rf_bankB_lent(void) { return bankB_lent; }
+#define BANKB_GUARD(ret) do { if (bankB_lent) { printf("ERR banco B prestato al heap (dashboard): per trasmettere usare BEACON o START (riavvio)\n"); ret; } } while (0)
+
 static bool rf_hw_ready;                     /* cattura di preparazione già fatta (blocco dump configurato) */
 bool pdx_rf_dirty(void) { return rf_hw_ready; }
 
@@ -105,6 +121,7 @@ unsigned pdx_rf_mhz(void) { return cur_mhz; }
 #include "soc/gpio_reg.h"
 #include "esp_cpu.h"
 #include "esp_heap_caps.h"
+#include "esp_heap_caps_init.h"
 #include "esp_phy_cert_test.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -816,6 +833,8 @@ void pdx_rf_pp_init(void)
 
 void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r)
 {
+    *r = (pdx_pp_res_t){0};
+    BANKB_GUARD(return);
     if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
     if (period_us < 20) period_us = 20;
     fill_tone(PDX_PP_A, 1600, 16, 200);
@@ -832,6 +851,8 @@ void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, p
 
 void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r)
 {
+    *r = (pdx_stream_res_t){0};
+    BANKB_GUARD(return);
     if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     if (n < 1000) n = 1000;
@@ -850,6 +871,8 @@ void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, p
 
 void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r)
 {
+    *r = (pdx_stream_res_t){0};
+    BANKB_GUARD(return);
     if (ms > PDX_TX_MS_MAX) ms = PDX_TX_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     if (hold != 4 && hold != 8 && hold != 16) hold = 8;
@@ -896,6 +919,8 @@ uint32_t pdx_rf_sym_open(uint32_t *sr, char label[41])
 
 void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r)
 {
+    *r = (pdx_stream_res_t){0};
+    BANKB_GUARD(return);
     if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     uint32_t sr;
@@ -973,6 +998,7 @@ void pdx_rf_live_stats(pdx_live_stats_t *st)
 const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, unsigned dry,
                           pdx_stream_res_t *r)
 {
+    if (bankB_lent) { *r = (pdx_stream_res_t){0}; return "banco B prestato al heap: usare BEACON o START (riavvio)"; }
     if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     *r = (pdx_stream_res_t){0};

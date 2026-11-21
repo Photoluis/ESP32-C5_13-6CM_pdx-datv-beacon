@@ -13,6 +13,8 @@
 
 esp_err_t pdx_rf_init(void);                  /* Wi-Fi in modo NULL: accende e calibra la PHY */
 bool pdx_rf_tune(unsigned mhz);
+bool pdx_rf_lend_bankB(void);            /* avvii senza TX: banco B al heap per l'access point */
+bool pdx_rf_bankB_lent(void);
 bool pdx_rf_dirty(void);                 /* la radio è stata manipolata (sintonia/TX): l'access point vuole un riavvio */          /* PLL sulla frequenza (MHz interi) */
 unsigned pdx_rf_mhz(void);
 /* cattura n parole (coppie I/Q) nel banco; div = divisore della frequenza di campionamento (0 = massima);

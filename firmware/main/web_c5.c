@@ -16,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_status.h"
+#include "rf_c5.h"
 #include "lwip/sockets.h"
 
 extern const char index_html_start[] asm("_binary_index_html_start");
@@ -167,6 +168,7 @@ bool pdx_web_start(void)
     ap.ap.max_connection = 2;
     ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
     ap.ap.pmf_cfg.required = false;
+    pdx_rf_lend_bankB();                                       /* RAM con DMA per i pacchetti TCP */
     esp_wifi_set_promiscuous(false);
     esp_wifi_stop();
     if (esp_wifi_set_mode(WIFI_MODE_AP) != ESP_OK || esp_wifi_set_config(WIFI_IF_AP, &ap) != ESP_OK ||
