@@ -12,7 +12,11 @@
 #define PDX_C5_ANT_GPIO    26            /* commutatore d'antenna della ESP32-C5-Zero (ceramica / IPEX) */
 
 esp_err_t pdx_rf_init(void);                  /* Wi-Fi in modo NULL: accende e calibra la PHY */
-bool pdx_rf_tune(unsigned mhz);
+bool pdx_rf_tune(unsigned mhz);              /* = pdx_rf_tune_khz(mhz * 1000) */
+/* frequenza VERA in kHz: il PLL si programma a f / (1 + ppm) con passo 1 kHz (phy_set_freq(MHz, kHz)) */
+bool pdx_rf_tune_khz(uint32_t khz);
+void pdx_rf_set_ppm(int32_t ppm_x100);       /* errore del quarzo della scheda in centesimi di ppm (+ = esce alta) */
+uint32_t pdx_rf_prog_khz(void);              /* frequenza programmata nel PLL (dopo la correzione) */
 bool pdx_rf_lend_bankB(void);            /* avvii senza TX: banco B al heap per l'access point */
 bool pdx_rf_bankB_lent(void);
 bool pdx_rf_dirty(void);                 /* la radio è stata manipolata (sintonia/TX): l'access point vuole un riavvio */          /* PLL sulla frequenza (MHz interi) */

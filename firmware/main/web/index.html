@@ -32,6 +32,8 @@ input[type=range]{width:52%}
 .bar button{flex:1 1 30%;min-width:96px;border:0;border-radius:8px;padding:11px 6px;font-weight:700;font-size:14px;color:#0d1117;background:var(--acc)}
 .bar .start{background:var(--grn)}.bar .stop{background:var(--red);color:#fff}.bar .sec{background:#30363d;color:var(--fg)}
 #msg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;background:var(--grn);color:#0d1117;font-weight:700;font-size:18px;text-align:center;padding:18px 26px;border-radius:12px;display:none;width:max-content;max-width:86%;box-shadow:0 0 0 100vmax #0006,0 6px 24px #000a}
+.calc{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 10px;color:var(--mut);font-size:13px}.calc span{flex:1 1 100%}
+.calc input{width:30%}.calc select{width:28%}.calc button{flex:1;border:0;border-radius:6px;padding:8px;font-weight:700;background:#30363d;color:var(--fg)}
 ol.how{margin:6px 0 0;padding-left:20px}ol.how li{margin:0 0 8px}ol.how b{color:var(--acc)}
 #msg.bad{background:var(--red);color:#fff}
 .bar button.flash{animation:fl .7s}@keyframes fl{0%{background:#fff}100%{}}
@@ -78,6 +80,10 @@ table.pins td:last-child{text-align:right;font-weight:600}.pins .r{color:var(--r
   <fieldset><legend data-t="g_tx"></legend>
     <label><span data-t="sr"></span><select id="sr"><option value="125000">125 kS</option><option value="250000">250 kS</option><option value="333000">333 kS</option><option value="500000">500 kS</option><option value="1000000" data-t="sr1000" disabled></option></select></label>
     <label><span><span data-t="amp"></span> <b id="ampv"></b></span><input type="range" id="amp" min="20" max="300" step="5"></label>
+    <label><span data-t="ppm"></span><input id="ppm" inputmode="decimal"></label>
+    <div class="hint" id="ppmh"></div>
+    <div class="calc"><span data-t="calc"></span>
+      <input id="offk" inputmode="decimal" placeholder="+20.5"><select id="offb"><option value="13">13 cm</option><option value="6">6 cm</option></select><button id="calc" type="button" data-t="calc_b"></button></div>
     <label><span data-t="gpioptt"></span><select id="gpioptt" class="gp"></select></label>
     <label><span data-t="gpiostop"></span><select id="gpiostop" class="gp"></select></label>
     <div class="hint" data-t="gpiostop_h"></div>
@@ -137,6 +143,12 @@ Object.assign(T.ja,{gpiostop:"STOP GPIO (GND接続)",gpiostop_h:"プルアップ
   "<b>ダッシュボードから</b>: 休止中にWi-Fiに接続してSTOP / 設定を押す。送信中はWi-Fiはオフ (無線が変調器)。",
   "<b>自動スタートOFF</b>: STARTを押すまで電源投入時に送信しません。",
   "接続: Wi-Fi <b>C5_13-6CM_BEACON</b>、パスワード <b>{P}</b>、ページ <b>http://192.168.4.1</b>。ボタン: BOOTは送信中でも常に停止。"]});
+Object.assign(T.it,{ppm:"Correzione quarzo (ppm)",calc:"Offset visto dal ricevitore (kHz, + se la C5 esce alta) sulla banda:",calc_b:"Calcola",
+ ppmh:"PLL corretto: 13 cm {A} kHz, 6 cm {B} kHz (passo 1 kHz). Vale con Applica; Salva per tenerla.",calcd:"ppm aggiornati: premi Applica e verifica col ricevitore"});
+Object.assign(T.en,{ppm:"Crystal correction (ppm)",calc:"Offset seen by the receiver (kHz, + if the C5 is high) on band:",calc_b:"Compute",
+ ppmh:"Corrected PLL: 13 cm {A} kHz, 6 cm {B} kHz (1 kHz step). Active with Apply; Save to keep it.",calcd:"ppm updated: press Apply and check on the receiver"});
+Object.assign(T.ja,{ppm:"水晶補正 (ppm)",calc:"受信機で見えるオフセット (kHz、C5が高ければ +)、バンド:",calc_b:"計算",
+ ppmh:"補正後のPLL: 13 cm {A} kHz、6 cm {B} kHz (1 kHz単位)。適用で有効、保存で保持。",calcd:"ppmを更新しました: 適用を押して受信機で確認"});
 const GP=[-1,0,1,2,3,4,5,6,7,8,9,10,23,24,25];
 let L="it";try{L=localStorage.getItem("lang")||(navigator.language||"it").slice(0,2)}catch(e){}
 if(!T[L])L="en";
@@ -163,17 +175,20 @@ function chart(){const b13=$("b13").checked,b6=$("b6").checked,tx=+$("tx").value
 function how(){const g=$("gpiostop").value,G=+g<0?"GPIO STOP ("+T[L].none+")":"GPIO"+g,P=($("appass").value||"pdxbeacon").replace(/[<>&"]/g,"");
  $("how").innerHTML=T[L].how.map(x=>"<li>"+x.replace("{G}","<b>"+G+"</b>").replace("{P}",P)+"</li>").join("")}
 function stline(s){$("st").textContent=s.state+(s.stopnow?T[L].stopnow:"")}
-function redraw(){chart();pins();how()}
+function pll(f){const p=parseFloat($("ppm").value)||0;return Math.round(parseFloat(f)*1000/(1+p*1e-6)).toLocaleString("it-IT")}
+function ppmh(){$("ppmh").textContent=T[L].ppmh.replace("{A}",pll($("f13").value)).replace("{B}",pll($("f6").value))}
+function sgn(x){return (x>=0?"+":"")+x.toFixed(2)}
+function redraw(){chart();pins();how();ppmh()}
 function db(a){return (20*Math.log10(a/480)).toFixed(1)+" dB"}
 function fill(s){$("fw").textContent=s.fw+" · 13 / 6 cm DVB-S2";stline(s);
  ["call","appass","tx","pause","wait"].forEach(k=>$(k).value=s[k]);
  $("f13").value=(s.f13/1000).toFixed(3);$("f6").value=(s.f6/1000).toFixed(3);$("sr").value=s.sr;$("amp").value=s.amp;$("ampv").textContent=db(s.amp);
  $("b13").checked=!!(s.bands&1);$("b6").checked=!!(s.bands&2);$("auto").checked=!!s.auto;
- ["ant13","ant6","gpio13","gpio6","gpiopol","gpioptt","gpiostop"].forEach(k=>$(k).value=s[k]);redraw()}
+ ["ant13","ant6","gpio13","gpio6","gpiopol","gpioptt","gpiostop"].forEach(k=>$(k).value=s[k]);$("ppm").value=sgn((s.ppm||0)/100);redraw()}
 function form(){const b=($("b13").checked?1:0)|($("b6").checked?2:0);
  const f={call:$("call").value,appass:$("appass").value,f13:$("f13").value,f6:$("f6").value,sr:$("sr").value,amp:$("amp").value,
  tx:$("tx").value,pause:$("pause").value,wait:$("wait").value,bands:b,auto:$("auto").checked?1:0,ant13:$("ant13").value,ant6:$("ant6").value,
- gpio13:$("gpio13").value,gpio6:$("gpio6").value,gpiopol:$("gpiopol").value,gpioptt:$("gpioptt").value,gpiostop:$("gpiostop").value};
+ gpio13:$("gpio13").value,gpio6:$("gpio6").value,gpiopol:$("gpiopol").value,gpioptt:$("gpioptt").value,gpiostop:$("gpiostop").value,ppm:(parseFloat($("ppm").value)||0).toFixed(2)};
  return Object.entries(f).map(([k,v])=>k+"="+encodeURIComponent(v)).join("&")}
 async function api(p,body){const r=await fetch(p,{method:body===undefined?"GET":"POST",body:body,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
  const j=await r.json();if(!r.ok)throw new Error(j.err||r.status);return j}
@@ -184,8 +199,11 @@ $("save").onclick=async()=>{flash("save");try{await api("/api/set",form());fill(
 $("defs").onclick=async()=>{try{fill(await api("/api/defaults",""))}catch(e){msg(T[L].err+e.message)}};
 $("stop").onclick=async()=>{try{fill(await api("/api/stop",""));msg(T[L].ok)}catch(e){msg(T[L].err+e.message)}};
 $("start").onclick=async()=>{try{await api("/api/start","");msg(T[L].starting)}catch(e){msg(T[L].err+e.message)}};
+$("calc").onclick=()=>{const o=parseFloat(String($("offk").value).replace(",","."));const f=parseFloat($($("offb").value=="13"?"f13":"f6").value);
+ if(isNaN(o)||!f){msg(T[L].err+"kHz",1);return}
+ const p=(parseFloat($("ppm").value)||0)+o*1000/f;$("ppm").value=sgn(Math.max(-100,Math.min(100,p)));$("offk").value="";redraw();msg(T[L].calcd)};
 document.querySelectorAll(".lang button").forEach(b=>b.onclick=()=>{lang(b.dataset.l);redraw()});
-["b13","b6","tx","pause","wait","ant13","ant6","gpio13","gpio6","gpioptt","gpiostop","appass"].forEach(k=>{$(k).addEventListener("input",redraw);$(k).addEventListener("change",redraw)});
+["b13","b6","tx","pause","wait","ant13","ant6","gpio13","gpio6","gpioptt","gpiostop","appass","ppm","f13","f6"].forEach(k=>{$(k).addEventListener("input",redraw);$(k).addEventListener("change",redraw)});
 lang(L);redraw();load();setInterval(async()=>{try{stline(await api("/api/status"))}catch(e){}},3000);
 </script>
 </body>

@@ -4,6 +4,7 @@
 
 #include <inttypes.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +21,9 @@
 #include "esp_system.h"
 #include "web_c5.h"
 
-#define CFG_VER  5u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT; 5: GPIO STOP */
+#define CFG_VER  6u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT; 5: GPIO STOP; 6: ppm */
+#define CFG_SIZE_V5 68u              /* blob v4/v5: fino a ap_pass compreso */
+_Static_assert(offsetof(pdx_bcn_cfg_t, ppm_x100) == CFG_SIZE_V5, "layout della configurazione v5 cambiato");
 #define STOP_GPIO_DEF 10             /* GPIO STOP predefinito (connettore, non di strapping) */
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
@@ -55,10 +58,12 @@ void pdx_bcn_load(pdx_bcn_cfg_t *c)
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
     pdx_bcn_cfg_t t;
+    memset(&t, 0, sizeof t);
     size_t n = sizeof t;
-    if (nvs_get_blob(h, "cfg", &t, &n) == ESP_OK && n == sizeof t) {
-        if (t.ver == 4u) { t.ver = CFG_VER; t.gpio_stop = STOP_GPIO_DEF; t.rsv[0] = 0; }   /* v4 -> v5: stessa struttura, GPIO STOP predefinito */
-        if (t.ver == CFG_VER) *c = t;
+    if (nvs_get_blob(h, "cfg", &t, &n) == ESP_OK) {
+        if (t.ver == 4u && n == CFG_SIZE_V5) { t.ver = 5u; t.gpio_stop = STOP_GPIO_DEF; t.rsv[0] = 0; }   /* v4 -> v5: GPIO STOP predefinito */
+        if (t.ver == 5u && n == CFG_SIZE_V5) { t.ver = CFG_VER; t.ppm_x100 = 0; }                            /* v5 -> v6: nessuna correzione */
+        if (t.ver == CFG_VER && n == sizeof t) *c = t;
     }
     nvs_close(h);
 }
@@ -79,6 +84,10 @@ void pdx_bcn_print(const pdx_bcn_cfg_t *c)
            c->sr, c->amp);
     printf("CONFIG tx %u s  pause %u s  wait %u s  bands %s%s  auto %s\n", c->tx_s, c->pause_s, c->wait_s,
            c->bands & 1 ? "13cm " : "", c->bands & 2 ? "6cm" : "", c->auto_tx ? "ON" : "OFF");
+    const int pa = c->ppm_x100 < 0 ? -c->ppm_x100 : c->ppm_x100;
+    printf("CONFIG quarzo %s%d.%02d ppm (13cm %+ld Hz, 6cm %+ld Hz)\n", c->ppm_x100 < 0 ? "-" : "+", pa / 100, pa % 100,
+           -(long)(c->f13_khz * 1e-5 * c->ppm_x100),
+           -(long)(c->f6_khz * 1e-5 * c->ppm_x100));
     char g13[12] = "", g6[12] = "", gp[12] = "nessuno";
     if (c->gpio13 >= 0) snprintf(g13, sizeof g13, " + GPIO%d", c->gpio13);
     if (c->gpio6 >= 0) snprintf(g6, sizeof g6, " + GPIO%d", c->gpio6);
@@ -138,6 +147,13 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
         return true;
     }
     if (!strcmp(key, "gpiopol") && num(val, 0, 1, &x)) { c->gpio_pol = (uint8_t)x; return true; }
+    if (!strcmp(key, "ppm")) {                                   /* "+8.42", "-3", "0" */
+        char *e;
+        const double p = strtod(val, &e);
+        if (e == val || *e || p < -100.0 || p > 100.0) return false;
+        c->ppm_x100 = (int16_t)(p * 100.0 + (p < 0 ? -0.5 : 0.5));
+        return true;
+    }
     if (!strcmp(key, "appass")) {
         const size_t n = strlen(val);
         if (n < 8 || n >= sizeof c->ap_pass) return false;
@@ -171,6 +187,7 @@ void pdx_bcn_stop_gpio_init(const pdx_bcn_cfg_t *c)
     }
     pdx_rf_set_stop_gpio(stop_gpio);
 }
+void pdx_bcn_apply(const pdx_bcn_cfg_t *c) { pdx_bcn_stop_gpio_init(c); pdx_rf_set_ppm(c->ppm_x100); }
 bool pdx_bcn_stop_gpio_active(void) { return stop_gpio >= 0 && gpio_get_level((gpio_num_t)stop_gpio) == 0; }
 
 static void gpio_out(int g, bool active, uint8_t pol)
@@ -296,7 +313,9 @@ void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
     char prov[40];
     snprintf(prov, sizeof prov, "BEACON %" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
     pdx_rf_live_source(b == 0 ? 1 : 0, c->call, prov);
-    if (!pdx_rf_tune(fk / 1000u)) { printf("BEACON ERR frequenza %" PRIu32 " kHz\n", fk); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    pdx_rf_set_ppm(c->ppm_x100);
+    if (!pdx_rf_tune_khz(fk)) { printf("BEACON ERR frequenza %" PRIu32 " kHz\n", fk); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    printf("BEACON PLL %" PRIu32 " kHz (quarzo %d/100 ppm)\n", pdx_rf_prog_khz(), c->ppm_x100);
     printf("BEACON ciclo %" PRIu32 " TX %s %" PRIu32 ".%03" PRIu32 " MHz %u s (BOOT ferma)\n", cycle,
            b == 0 ? "13cm" : "6cm", fk / 1000u, fk % 1000u, c->tx_s);
     fflush(stdout);

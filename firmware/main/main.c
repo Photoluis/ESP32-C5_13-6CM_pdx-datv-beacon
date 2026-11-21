@@ -32,7 +32,7 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B2d-WEB"
+#define FW_VERSION "C5-B2e-PPM"
 
 static bool tx_armed;
 
@@ -53,7 +53,7 @@ static void cmd_info(void)
            (void *)&_iram_end, (void *)&_data_end, (void *)&_bss_end);
     printf("SRAM_OWNER 0x%08" PRIx32 "\n", rd(PDX_C5_SRAM_OWNER));
     for (uint32_t o = 0; o <= 0x1C; o += 4) printf("DUMP+%02" PRIx32 " 0x%08" PRIx32 "\n", o, rd(PDX_C5_DUMP_BASE + o));
-    printf("FREQ %u MHz  ANT(GPIO26) %d\n", pdx_rf_mhz(), gpio_get_level(PDX_C5_ANT_GPIO));
+    printf("FREQ %u MHz  PLL %" PRIu32 " kHz  ANT(GPIO26) %d\n", pdx_rf_mhz(), pdx_rf_prog_khz(), gpio_get_level(PDX_C5_ANT_GPIO));
     printf("OK info\n");
 }
 
@@ -119,7 +119,7 @@ void app_main(void)
     static pdx_bcn_cfg_t bcfg;
     pdx_bcn_load(&bcfg);
     pdx_web_init(&bcfg, FW_VERSION);
-    pdx_bcn_stop_gpio_init(&bcfg);                       /* GPIO STOP: a massa = beacon fermo, dashboard accesa */
+    pdx_bcn_apply(&bcfg);                                /* GPIO STOP (a massa = beacon fermo) e correzione del quarzo */
     int rb = 0;
     uint32_t rc = 1;
     const int bm = pdx_bcn_boot_mode(&rb, &rc);
@@ -177,6 +177,10 @@ void app_main(void)
         if (!strcmp(cmd, "INFO")) cmd_info();
         else if (!strcmp(cmd, "ANT") && k >= 2) cmd_ant((int)a);
         else if (!strcmp(cmd, "FREQ") && k >= 2) printf(pdx_rf_tune(a) ? "OK freq %u\n" : "ERR freq %u\n", a);
+        else if (!strcmp(cmd, "FREQK") && k >= 2) {     /* FREQK <kHz>: frequenza vera, PLL corretto dal quarzo (nessuna TX) */
+            if (pdx_rf_tune_khz(a)) printf("OK freqk %u PLL %" PRIu32 " kHz\n", a, pdx_rf_prog_khz());
+            else printf("ERR freqk %u\n", a);
+        }
         else if (!strcmp(cmd, "RXCAP") && k >= 2) cmd_rxcap(a, k >= 3 ? b : 0);
         else if (!strcmp(cmd, "RXDUMP") && k >= 2) cmd_rxdump(a);
         else if (!strcmp(cmd, "TXARM")) { tx_armed = true; printf("OK txarm: i comandi REFTONE/DACP trasmettono\n"); }
@@ -214,12 +218,12 @@ void app_main(void)
             const char *cf = NULL;
             if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&t, key, val) && !(cf = pdx_bcn_check(&t))) {
                 bcfg = t;
-                pdx_bcn_stop_gpio_init(&bcfg);
+                pdx_bcn_apply(&bcfg);
                 pdx_bcn_print(&bcfg);
                 printf("OK set (SAVE per salvare)\n");
             }
             else if (cf) printf("ERR %s: GPIO gia' usato da un'altra funzione\n", cf);
-            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpioptt|gpiostop|gpiopol valore\n");
+            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpioptt|gpiostop|gpiopol|ppm valore\n");
         }
         else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
         else if (!strcmp(cmd, "BEACON")) {

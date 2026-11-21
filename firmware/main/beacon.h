@@ -24,6 +24,9 @@ typedef struct {
     int8_t gpio_stop;       /* GPIO STOP: ingresso con pull-up, a massa = beacon fermo e Wi-Fi acceso, -1 = nessuno */
     uint8_t rsv[1];
     char ap_pass[16];       /* password dell'access point della dashboard (8..15 caratteri) */
+    /* --- v6 (blob v4/v5 = 68 byte, fin qui) --- */
+    int16_t ppm_x100;       /* errore del quarzo in centesimi di ppm (+ = la scheda esce alta), -10000..10000 */
+    uint8_t rsv2[2];
 } pdx_bcn_cfg_t;
 
 void pdx_bcn_defaults(pdx_bcn_cfg_t *c);
@@ -35,6 +38,8 @@ bool pdx_bcn_gpio_ok(int g);                                            /* GPIO 
 const char *pdx_bcn_check(const pdx_bcn_cfg_t *c);                      /* NULL = ok, altrimenti GPIO in conflitto */
 /* GPIO STOP: configura l'ingresso (pull-up) e lo aggiunge al BOOT nel ciclo della TX; true = a massa adesso */
 void pdx_bcn_stop_gpio_init(const pdx_bcn_cfg_t *c);
+/* applica al volo le parti della configurazione che agiscono subito (GPIO STOP, correzione del quarzo) */
+void pdx_bcn_apply(const pdx_bcn_cfg_t *c);
 bool pdx_bcn_stop_gpio_active(void);
 
 /* doppia accensione: true se l'avvio precedente è stato interrotto entro 5 s (=> configurazione, niente TX) */

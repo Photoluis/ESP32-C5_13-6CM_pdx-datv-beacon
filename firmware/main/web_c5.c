@@ -48,10 +48,10 @@ static esp_err_t send_status(httpd_req_t *r)
     snprintf(j, sizeof j,
              "{\"fw\":\"%s\",\"state\":\"%s\",\"ssid\":\"%s\",\"call\":\"%s\",\"appass\":\"%s\",\"f13\":%" PRIu32 ",\"f6\":%" PRIu32
              ",\"sr\":%" PRIu32 ",\"amp\":%" PRIi32 ",\"tx\":%u,\"pause\":%u,\"wait\":%u,\"bands\":%u,\"auto\":%u,"
-             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d,\"gpiostop\":%d,\"stopnow\":%u}",
+             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d,\"gpiostop\":%d,\"stopnow\":%u,\"ppm\":%d}",
              fw_version, state_txt, PDX_WEB_SSID, c->call, c->ap_pass, c->f13_khz, c->f6_khz, c->sr, c->amp, c->tx_s,
              c->pause_s, c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol, c->gpio_ptt,
-             c->gpio_stop, pdx_bcn_stop_gpio_active() ? 1u : 0u);
+             c->gpio_stop, pdx_bcn_stop_gpio_active() ? 1u : 0u, c->ppm_x100);
     httpd_resp_set_type(r, "application/json");
     return httpd_resp_sendstr(r, j);
 }
@@ -98,7 +98,7 @@ static esp_err_t h_set(httpd_req_t *r)
         return httpd_resp_sendstr(r, m);
     }
     *cfg = t;
-    pdx_bcn_stop_gpio_init(cfg);
+    pdx_bcn_apply(cfg);
     pdx_led_confirm();
     printf("WEB configurazione applicata\n");
     return send_status(r);
@@ -118,6 +118,7 @@ static esp_err_t h_defaults(httpd_req_t *r)
     pdx_bcn_defaults(&d);
     snprintf(d.call, sizeof d.call, "%s", cfg->call);       /* nominativo e password restano */
     snprintf(d.ap_pass, sizeof d.ap_pass, "%s", cfg->ap_pass);
+    d.ppm_x100 = cfg->ppm_x100;                                /* il quarzo e' della scheda: resta */
     *cfg = d;
     return send_status(r);
 }

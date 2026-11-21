@@ -26,6 +26,7 @@ SOC_RESERVE_MEMORY_REGION(0x40820000, 0x40840000, c5_rf_dump);
 
 extern void adctrig(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 extern void phy_set_chanfreq(unsigned mhz, unsigned mode);
+extern void phy_set_freq(unsigned mhz, int khz);   /* phy_param+30 = kHz (stringa della libreria "freq: %d %dkhz %d") */
 extern void phy_stop_tx_tone(unsigned);
 extern void phy_pbus_workmode(void);
 extern void phy_pbus_xpd_rx_on(unsigned);
@@ -40,6 +41,8 @@ int cmd_parse(char *cmd, char *name, int *argc, char **argv)
 }
 
 static unsigned cur_mhz = 2412;
+static uint32_t cur_khz = 2412000u, prog_khz = 2412000u;
+static int32_t xtal_ppm_x100;
 
 static inline uint32_t rd(uint32_t a) { return *(volatile uint32_t *)a; }
 static inline void wr(uint32_t a, uint32_t v) { *(volatile uint32_t *)a = v; }
@@ -98,12 +101,20 @@ bool pdx_rf_bankB_lent(void) { return bankB_lent; }
 static bool rf_hw_ready;                     /* cattura di preparazione già fatta (blocco dump configurato) */
 bool pdx_rf_dirty(void) { return rf_hw_ready; }
 
-bool pdx_rf_tune(unsigned mhz)
+void pdx_rf_set_ppm(int32_t ppm_x100) { xtal_ppm_x100 = ppm_x100; }
+uint32_t pdx_rf_prog_khz(void) { return prog_khz; }
+
+bool pdx_rf_tune(unsigned mhz) { return pdx_rf_tune_khz(mhz * 1000u); }
+
+bool pdx_rf_tune_khz(uint32_t khz)
 {
-    if (mhz < 2300 || (mhz > 2500 && mhz < 4900) || mhz > 5900) return false;
-    phy_set_chanfreq(mhz, 0);
+    if (khz < 2300000u || (khz > 2500000u && khz < 4900000u) || khz > 5900000u) return false;
+    const uint32_t pk = (uint32_t)((double)khz / (1.0 + (double)xtal_ppm_x100 * 1e-8) + 0.5);
+    phy_set_freq(pk / 1000u, (int)(pk % 1000u));
     rx_idle();
-    cur_mhz = mhz;
+    cur_khz = khz;
+    prog_khz = pk;
+    cur_mhz = khz / 1000u;
     if (!rf_hw_ready) {                          /* prima sintonia: cattura breve che configura il blocco dump */
         rf_hw_ready = true;
         uint32_t us;
@@ -207,7 +218,7 @@ void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigne
     wr(PDX_C5_SRAM_OWNER, r->owner_before);
     tx_off();
     phy_txcal_work_mode();
-    pdx_rf_tune(cur_mhz);
+    pdx_rf_tune_khz(cur_khz);
 }
 
 static void replay_run(uint32_t off, uint32_t val, unsigned ms, pdx_dacp_res_t *r)
@@ -233,7 +244,7 @@ static void replay_run(uint32_t off, uint32_t val, unsigned ms, pdx_dacp_res_t *
     wr(PDX_C5_SRAM_OWNER, r->owner_before);
     tx_off();
     phy_txcal_work_mode();
-    pdx_rf_tune(cur_mhz);
+    pdx_rf_tune_khz(cur_khz);
 }
 
 void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, unsigned ms, pdx_dacp_res_t *r)
@@ -783,7 +794,7 @@ static void stream_run(const pp_req_t *q)
     taskEXIT_CRITICAL(&mux);
     tx_off();
     phy_txcal_work_mode();
-    pdx_rf_tune(cur_mhz);
+    pdx_rf_tune_khz(cur_khz);
 }
 
 static void pp_task_fn(void *arg)
@@ -822,7 +833,7 @@ static void pp_task_fn(void *arg)
         taskEXIT_CRITICAL(&mux);
         tx_off();
         phy_txcal_work_mode();
-        pdx_rf_tune(cur_mhz);
+        pdx_rf_tune_khz(cur_khz);
         *q->r = res;
         xTaskNotifyGive(q->caller);
     }
