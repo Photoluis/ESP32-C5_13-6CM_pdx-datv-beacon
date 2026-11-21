@@ -234,7 +234,7 @@ void pdx_led_rgb(uint8_t r, uint8_t g, uint8_t b)
 void pdx_led_idle(void) { pdx_led_rgb(77, 60, 0); }                  /* attesa: giallo fisso al 30% (utente, 04/11) */
 void pdx_led_rx(void) { pdx_led_rgb(0, 128, 0); }                     /* ricezione: verde fisso al 50% */
 
-void pdx_led_tx(double level_db)
+void pdx_led_tx_rgb(double level_db, uint8_t r, uint8_t g, uint8_t b)
 {
     /* TX: rosso al 50% che lampeggia, più veloce con più potenza: da 1 Hz a PDX_LED_DB_MIN fino a 5 Hz a PDX_LED_DB_MAX */
     double t = (level_db - PDX_LED_DB_MIN) / (PDX_LED_DB_MAX - PDX_LED_DB_MIN);
@@ -243,11 +243,15 @@ void pdx_led_tx(double level_db)
     lock();
     set_base();
     last_half_ms = (uint32_t)(500.0 / hz + 0.5);
-    last_rgb[0] = 128; last_rgb[1] = 0; last_rgb[2] = 0;
+    last_rgb[0] = r; last_rgb[1] = g; last_rgb[2] = b;
     last_kind = 1;
     show_blink();
     unlock();
 }
+
+/* C5: rosso = TX 13 cm (come il beacon S3), blu = TX 6 cm (richiesta dell'utente del 21/11) */
+void pdx_led_tx(double level_db) { pdx_led_tx_rgb(level_db, 128, 0, 0); }
+void pdx_led_tx6(double level_db) { pdx_led_tx_rgb(level_db, 0, 0, 160); }
 
 /* nominativo acquisito dal Parrot (06/11): verde al 50% che lampeggia veloce (~8 Hz) dal momento in cui il nominativo
  * è letto dalla SDT (a metà decodifica) fino alla TX della risposta (rosso). Il giallo resta solo per l'attesa. */

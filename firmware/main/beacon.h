@@ -17,7 +17,9 @@ typedef struct {
     uint16_t wait_s;        /* attesa annullabile all'accensione */
     uint8_t bands;          /* bit 0 = 13 cm, bit 1 = 6 cm */
     uint8_t auto_tx;        /* 1 = il ciclo parte da solo all'accensione */
-    uint8_t ant;            /* 1 = IPEX, 0 = antenna ceramica */
+    uint8_t ant13, ant6;    /* uscita per banda: 1 = IPEX, 0 = antenna PCB/ceramica (commutatore su GPIO26) */
+    int8_t gpio13, gpio6;   /* GPIO esterno attivo durante la TX della banda (relè, commutatore), -1 = nessuno */
+    uint8_t gpio_pol;       /* 1 = attivo alto, 0 = attivo basso */
     uint8_t rsv[3];
 } pdx_bcn_cfg_t;
 
@@ -26,6 +28,7 @@ void pdx_bcn_load(pdx_bcn_cfg_t *c);              /* NVS, altrimenti valori pred
 bool pdx_bcn_save(const pdx_bcn_cfg_t *c);
 void pdx_bcn_print(const pdx_bcn_cfg_t *c);
 bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val);   /* false se chiave o valore non validi */
+bool pdx_bcn_gpio_ok(int g);                                            /* GPIO esterno consentito */
 
 /* doppia accensione: true se l'avvio precedente è stato interrotto entro 5 s (=> configurazione, niente TX) */
 bool pdx_bcn_quick_boot(void);

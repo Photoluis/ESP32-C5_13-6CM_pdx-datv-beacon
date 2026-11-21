@@ -16,7 +16,7 @@
 #include "nvs.h"
 #include "rf_c5.h"
 
-#define CFG_VER  1u
+#define CFG_VER  2u                  /* 2: antenna e GPIO per banda */
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
 
@@ -34,7 +34,11 @@ void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
     c->wait_s = 30;
     c->bands = 3;
     c->auto_tx = 0;          /* sicurezza: la partenza automatica si abilita a mano (SET auto 1 + SAVE) */
-    c->ant = 1;
+    c->ant13 = 1;
+    c->ant6 = 1;
+    c->gpio13 = -1;
+    c->gpio6 = -1;
+    c->gpio_pol = 1;
 }
 
 void pdx_bcn_load(pdx_bcn_cfg_t *c)
@@ -62,8 +66,13 @@ void pdx_bcn_print(const pdx_bcn_cfg_t *c)
     printf("CONFIG call %s  f13 %" PRIu32 ".%03" PRIu32 " MHz  f6 %" PRIu32 ".%03" PRIu32 " MHz  sr %" PRIu32
            "  amp %" PRIi32 "\n", c->call, c->f13_khz / 1000u, c->f13_khz % 1000u, c->f6_khz / 1000u, c->f6_khz % 1000u,
            c->sr, c->amp);
-    printf("CONFIG tx %u s  pause %u s  wait %u s  bands %s%s  auto %s  ant %s\n", c->tx_s, c->pause_s, c->wait_s,
-           c->bands & 1 ? "13cm " : "", c->bands & 2 ? "6cm" : "", c->auto_tx ? "ON" : "OFF", c->ant ? "IPEX" : "ceramica");
+    printf("CONFIG tx %u s  pause %u s  wait %u s  bands %s%s  auto %s\n", c->tx_s, c->pause_s, c->wait_s,
+           c->bands & 1 ? "13cm " : "", c->bands & 2 ? "6cm" : "", c->auto_tx ? "ON" : "OFF");
+    char g13[12] = "", g6[12] = "";
+    if (c->gpio13 >= 0) snprintf(g13, sizeof g13, " + GPIO%d", c->gpio13);
+    if (c->gpio6 >= 0) snprintf(g6, sizeof g6, " + GPIO%d", c->gpio6);
+    printf("CONFIG antenna 13cm %s%s  6cm %s%s  GPIO esterni attivi %s\n", c->ant13 ? "IPEX" : "PCB", g13,
+           c->ant6 ? "IPEX" : "PCB", g6, c->gpio_pol ? "alti" : "bassi");
 }
 
 static bool num(const char *v, long lo, long hi, long *out)
@@ -102,8 +111,35 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     if (!strcmp(key, "wait") && num(val, 5, 300, &x)) { c->wait_s = (uint16_t)x; return true; }
     if (!strcmp(key, "bands") && num(val, 1, 3, &x)) { c->bands = (uint8_t)x; return true; }
     if (!strcmp(key, "auto") && num(val, 0, 1, &x)) { c->auto_tx = (uint8_t)x; return true; }
-    if (!strcmp(key, "ant") && num(val, 0, 1, &x)) { c->ant = (uint8_t)x; return true; }
+    if (!strcmp(key, "ant13") && num(val, 0, 1, &x)) { c->ant13 = (uint8_t)x; return true; }
+    if (!strcmp(key, "ant6") && num(val, 0, 1, &x)) { c->ant6 = (uint8_t)x; return true; }
+    if ((!strcmp(key, "gpio13") || !strcmp(key, "gpio6")) && num(val, -1, 28, &x)) {
+        if (x >= 0 && !pdx_bcn_gpio_ok((int)x)) return false;
+        if (!strcmp(key, "gpio13")) c->gpio13 = (int8_t)x; else c->gpio6 = (int8_t)x;
+        return true;
+    }
+    if (!strcmp(key, "gpiopol") && num(val, 0, 1, &x)) { c->gpio_pol = (uint8_t)x; return true; }
     return false;
+}
+
+/* GPIO esterni consentiti: connettore 0..10 e piazzole 23/24/25 (non 13/14 USB, 26 antenna, 27 LED, 28 BOOT) */
+bool pdx_bcn_gpio_ok(int g) { return (g >= 0 && g <= 10) || g == 23 || g == 24 || g == 25; }
+
+static void gpio_out(int g, bool active, uint8_t pol)
+{
+    if (g < 0) return;
+    gpio_reset_pin((gpio_num_t)g);
+    gpio_set_direction((gpio_num_t)g, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)g, active ? pol : !pol);
+}
+
+/* uscita della banda b (0 = 13 cm, 1 = 6 cm): commutatore interno e GPIO esterni; tx = false: tutti a riposo */
+static void antenna_route(const pdx_bcn_cfg_t *c, int b, bool tx)
+{
+    gpio_set_level(PDX_C5_ANT_GPIO, (b == 0 ? c->ant13 : c->ant6) ? 1 : 0);
+    gpio_out(c->gpio13, tx && b == 0, c->gpio_pol);
+    gpio_out(c->gpio6, tx && b == 1, c->gpio_pol);
+    if (tx && (b == 0 ? c->gpio13 : c->gpio6) >= 0) vTaskDelay(pdMS_TO_TICKS(50));   /* assestamento del relè */
 }
 
 /* ---- doppia accensione: flag in NVS acceso all'avvio e spento dopo 5 s ---- */
@@ -168,7 +204,6 @@ static bool pause_with_stop(unsigned s)
 void pdx_bcn_run(const pdx_bcn_cfg_t *c)
 {
     pdx_bcn_quick_clear();
-    gpio_set_level(PDX_C5_ANT_GPIO, c->ant ? 1 : 0);
     const double lvl = 20.0 * log10((double)c->amp / 480.0);
     for (uint32_t cycle = 1;; cycle++) {
         for (int b = 0; b < 2; b++) {
@@ -182,10 +217,12 @@ void pdx_bcn_run(const pdx_bcn_cfg_t *c)
                    b == 0 ? "13cm" : "6cm", fk / 1000u, fk % 1000u, c->tx_s);
             fflush(stdout);
             vTaskDelay(pdMS_TO_TICKS(50));
-            pdx_led_tx(lvl);
+            antenna_route(c, b, true);
+            if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
             pdx_stream_res_t r;
             const char *e = pdx_rf_s2live(c->sr, c->amp, c->tx_s * 1000u, 50, 0, 0, &r);
             pdx_led_idle();
+            antenna_route(c, b, false);
             pdx_live_stats_t st;
             pdx_rf_live_stats(&st);
             if (e) { printf("BEACON ERR %s\n", e); return; }

@@ -29,7 +29,9 @@ void pdx_led_set_mode(int mode);                    /* riapplica subito l'ultimo
 void pdx_led_idle(void);                            /* giallo fisso */
 void pdx_led_rx(void);                              /* verde fisso */
 void pdx_led_qso(void);                             /* verde veloce: nominativo acquisito dal Parrot, fino alla risposta */
-void pdx_led_tx(double level_db);                   /* rosso lampeggiante */
+void pdx_led_tx(double level_db);                   /* rosso lampeggiante (TX 13 cm) */
+void pdx_led_tx6(double level_db);                  /* blu lampeggiante (TX 6 cm) */
+void pdx_led_tx_rgb(double level_db, uint8_t r, uint8_t g, uint8_t b);
 void pdx_led_rgb(uint8_t r, uint8_t g, uint8_t b);  /* colore fisso qualsiasi */
 /* avvisi brevi, solo in attesa (mai durante TX o RX), poi si torna allo stato di base:
  * conferma = giallo lampeggiante lento per 3 s (parametri applicati / salvati)
