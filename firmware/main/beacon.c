@@ -19,7 +19,7 @@
 #include "esp_system.h"
 #include "web_c5.h"
 
-#define CFG_VER  3u                  /* 2: antenna e GPIO per banda; 3: password dell'access point */
+#define CFG_VER  4u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT */
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
 
@@ -42,6 +42,7 @@ void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
     c->gpio13 = -1;
     c->gpio6 = -1;
     c->gpio_pol = 1;
+    c->gpio_ptt = -1;
     snprintf(c->ap_pass, sizeof c->ap_pass, "pdxbeacon");
 }
 
@@ -72,11 +73,12 @@ void pdx_bcn_print(const pdx_bcn_cfg_t *c)
            c->sr, c->amp);
     printf("CONFIG tx %u s  pause %u s  wait %u s  bands %s%s  auto %s\n", c->tx_s, c->pause_s, c->wait_s,
            c->bands & 1 ? "13cm " : "", c->bands & 2 ? "6cm" : "", c->auto_tx ? "ON" : "OFF");
-    char g13[12] = "", g6[12] = "";
+    char g13[12] = "", g6[12] = "", gp[12] = "nessuno";
     if (c->gpio13 >= 0) snprintf(g13, sizeof g13, " + GPIO%d", c->gpio13);
     if (c->gpio6 >= 0) snprintf(g6, sizeof g6, " + GPIO%d", c->gpio6);
-    printf("CONFIG antenna 13cm %s%s  6cm %s%s  GPIO esterni attivi %s\n", c->ant13 ? "IPEX" : "PCB", g13,
-           c->ant6 ? "IPEX" : "PCB", g6, c->gpio_pol ? "alti" : "bassi");
+    if (c->gpio_ptt >= 0) snprintf(gp, sizeof gp, "GPIO%d", c->gpio_ptt);
+    printf("CONFIG antenna 13cm %s%s  6cm %s%s  PTT %s  GPIO esterni attivi %s\n", c->ant13 ? "IPEX" : "PCB", g13,
+           c->ant6 ? "IPEX" : "PCB", g6, gp, c->gpio_pol ? "alti" : "bassi");
 }
 
 static bool num(const char *v, long lo, long hi, long *out)
@@ -108,7 +110,8 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     }
     if (!strcmp(key, "f13")) return freq_khz(val, 2300, 2450, &c->f13_khz);
     if (!strcmp(key, "f6")) return freq_khz(val, 5650, 5850, &c->f6_khz);
-    if (!strcmp(key, "sr") && num(val, 125000, 500000, &x)) { c->sr = (uint32_t)x; return true; }
+    if (!strcmp(key, "sr") && num(val, 125000, 1000000, &x) &&
+        (x == 125000 || x == 250000 || x == 333000 || x == 500000 || x == 1000000)) { c->sr = (uint32_t)x; return true; }
     if (!strcmp(key, "amp") && num(val, 20, 300, &x)) { c->amp = (int32_t)x; return true; }
     if (!strcmp(key, "tx") && num(val, 10, 600, &x)) { c->tx_s = (uint16_t)x; return true; }
     if (!strcmp(key, "pause") && num(val, 5, 3600, &x)) { c->pause_s = (uint16_t)x; return true; }
@@ -117,9 +120,11 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     if (!strcmp(key, "auto") && num(val, 0, 1, &x)) { c->auto_tx = (uint8_t)x; return true; }
     if (!strcmp(key, "ant13") && num(val, 0, 1, &x)) { c->ant13 = (uint8_t)x; return true; }
     if (!strcmp(key, "ant6") && num(val, 0, 1, &x)) { c->ant6 = (uint8_t)x; return true; }
-    if ((!strcmp(key, "gpio13") || !strcmp(key, "gpio6")) && num(val, -1, 28, &x)) {
+    if ((!strcmp(key, "gpio13") || !strcmp(key, "gpio6") || !strcmp(key, "gpioptt")) && num(val, -1, 28, &x)) {
         if (x >= 0 && !pdx_bcn_gpio_ok((int)x)) return false;
-        if (!strcmp(key, "gpio13")) c->gpio13 = (int8_t)x; else c->gpio6 = (int8_t)x;
+        if (!strcmp(key, "gpio13")) c->gpio13 = (int8_t)x;
+        else if (!strcmp(key, "gpio6")) c->gpio6 = (int8_t)x;
+        else c->gpio_ptt = (int8_t)x;
         return true;
     }
     if (!strcmp(key, "gpiopol") && num(val, 0, 1, &x)) { c->gpio_pol = (uint8_t)x; return true; }
@@ -149,7 +154,8 @@ static void antenna_route(const pdx_bcn_cfg_t *c, int b, bool tx)
     gpio_set_level(PDX_C5_ANT_GPIO, (b == 0 ? c->ant13 : c->ant6) ? 1 : 0);
     gpio_out(c->gpio13, tx && b == 0, c->gpio_pol);
     gpio_out(c->gpio6, tx && b == 1, c->gpio_pol);
-    if (tx && (b == 0 ? c->gpio13 : c->gpio6) >= 0) vTaskDelay(pdMS_TO_TICKS(50));   /* assestamento del relè */
+    gpio_out(c->gpio_ptt, tx, c->gpio_pol);                  /* TX/standby (PTT): attivo durante qualunque TX */
+    if (tx && ((b == 0 ? c->gpio13 : c->gpio6) >= 0 || c->gpio_ptt >= 0)) vTaskDelay(pdMS_TO_TICKS(50));   /* relè */
 }
 
 /* ---- doppia accensione: flag in NVS acceso all'avvio e spento dopo 5 s ---- */

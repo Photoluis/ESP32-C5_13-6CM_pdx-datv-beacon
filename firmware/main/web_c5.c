@@ -48,9 +48,9 @@ static esp_err_t send_status(httpd_req_t *r)
     snprintf(j, sizeof j,
              "{\"fw\":\"%s\",\"state\":\"%s\",\"call\":\"%s\",\"appass\":\"%s\",\"f13\":%" PRIu32 ",\"f6\":%" PRIu32
              ",\"sr\":%" PRIu32 ",\"amp\":%" PRIi32 ",\"tx\":%u,\"pause\":%u,\"wait\":%u,\"bands\":%u,\"auto\":%u,"
-             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u}",
+             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d}",
              fw_version, state_txt, c->call, c->ap_pass, c->f13_khz, c->f6_khz, c->sr, c->amp, c->tx_s, c->pause_s,
-             c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol);
+             c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol, c->gpio_ptt);
     httpd_resp_set_type(r, "application/json");
     return httpd_resp_sendstr(r, j);
 }

@@ -32,7 +32,7 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B2b-WEB"
+#define FW_VERSION "C5-B2c-WEB"
 
 static bool tx_armed;
 
@@ -207,7 +207,7 @@ void app_main(void)
         else if (!strcmp(cmd, "SET")) {
             char key[16] = {0}, val[40] = {0};
             if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&bcfg, key, val)) { pdx_bcn_print(&bcfg); printf("OK set (SAVE per salvare)\n"); }
-            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpiopol valore\n");
+            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpioptt|gpiopol valore\n");
         }
         else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
         else if (!strcmp(cmd, "BEACON")) {

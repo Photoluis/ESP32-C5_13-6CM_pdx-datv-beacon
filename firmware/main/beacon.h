@@ -20,7 +20,8 @@ typedef struct {
     uint8_t ant13, ant6;    /* uscita per banda: 1 = IPEX, 0 = antenna PCB/ceramica (commutatore su GPIO26) */
     int8_t gpio13, gpio6;   /* GPIO esterno attivo durante la TX della banda (relè, commutatore), -1 = nessuno */
     uint8_t gpio_pol;       /* 1 = attivo alto, 0 = attivo basso */
-    uint8_t rsv[3];
+    int8_t gpio_ptt;        /* GPIO TX/standby (PTT) attivo durante qualunque TX, -1 = nessuno */
+    uint8_t rsv[2];
     char ap_pass[16];       /* password dell'access point della dashboard (8..15 caratteri) */
 } pdx_bcn_cfg_t;
 
