@@ -691,9 +691,13 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
         const uint32_t fc = esp_cpu_get_cycle_count() - f0;
         if (fc > stream_res.fill_max) stream_res.fill_max = fc;
         if (stream_kind == 3) {                                   /* tempi morti: passi del produttore DVB-S2 */
-            const uint32_t dl = tsw + per - 14000u;               /* margine 58 us prima dello scambio */
-            while ((int32_t)(esp_cpu_get_cycle_count() - dl) < 0) {
+            /* margine adattivo: un passo parte solo se prima dello scambio resta più del passo più lungo già visto
+             * per la sua fase (+1500 cicli); all'inizio, senza misure, 12000 cicli */
+            const uint32_t sw = tsw + per;
+            for (;;) {
                 const uint32_t ph = lv.pstage < 2u ? lv.pstage : 2u + (live_job.stage < 5u ? live_job.stage : 5u);
+                const uint32_t need = lv.st_max[ph] ? lv.st_max[ph] + 1500u : 12000u;
+                if ((int32_t)(sw - esp_cpu_get_cycle_count()) < (int32_t)need) break;
                 const uint32_t s0 = esp_cpu_get_cycle_count();
                 if (!live_producer_step()) break;
                 const uint32_t sc = esp_cpu_get_cycle_count() - s0;
