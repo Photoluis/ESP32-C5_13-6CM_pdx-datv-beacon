@@ -21,6 +21,7 @@ typedef struct {
     int8_t gpio13, gpio6;   /* GPIO esterno attivo durante la TX della banda (relè, commutatore), -1 = nessuno */
     uint8_t gpio_pol;       /* 1 = attivo alto, 0 = attivo basso */
     uint8_t rsv[3];
+    char ap_pass[16];       /* password dell'access point della dashboard (8..15 caratteri) */
 } pdx_bcn_cfg_t;
 
 void pdx_bcn_defaults(pdx_bcn_cfg_t *c);
@@ -36,5 +37,11 @@ void pdx_bcn_quick_clear(void);
 
 /* attesa annullabile (true = scaduta senza annullamento: si parte) */
 bool pdx_bcn_wait(unsigned s);
-/* ciclo del beacon fino allo STOP (tasto BOOT durante la TX, carattere seriale o BOOT nelle pause) */
-void pdx_bcn_run(const pdx_bcn_cfg_t *c);
+/* ciclo del beacon dalla banda start_band (0 = 13 cm, 1 = 6 cm) fino allo STOP (BOOT durante la TX; carattere seriale,
+ * BOOT o STOP della dashboard nelle pause). Nelle pause accende la dashboard; alla fine della pausa, se l'access point
+ * è stato acceso, la scheda si riavvia e riprende dalla banda successiva (radio pulita, come il beacon S3). */
+void pdx_bcn_run(const pdx_bcn_cfg_t *c, int start_band, uint32_t cycle);
+/* riavvio con ripresa del ciclo (stato in memoria RTC) */
+void pdx_bcn_request_run(int start_band, uint32_t cycle);
+/* true se l'avvio è una ripresa del ciclo: banda e numero del ciclo */
+bool pdx_bcn_resume(int *band, uint32_t *cycle);

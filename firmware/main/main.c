@@ -28,10 +28,11 @@
 #include "freertos/task.h"
 #include <math.h>
 #include "beacon.h"
+#include "web_c5.h"
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B1b-BEACON"
+#define FW_VERSION "C5-B2-WEB"
 
 static bool tx_armed;
 
@@ -117,16 +118,27 @@ void app_main(void)
     /* B1: beacon autonomo. Doppia accensione (spegnere e riaccendere entro 5 s) = modo configurazione, niente TX */
     static pdx_bcn_cfg_t bcfg;
     pdx_bcn_load(&bcfg);
-    const bool quick = pdx_bcn_quick_boot();
-    pdx_bcn_print(&bcfg);
-    if (quick) {
-        printf("BEACON doppia accensione: modo configurazione (nessuna TX)\n");
-        pdx_bcn_quick_clear();
-    } else if (bcfg.auto_tx) {
-        if (pdx_bcn_wait(bcfg.wait_s)) pdx_bcn_run(&bcfg);
+    pdx_web_init(&bcfg, FW_VERSION);
+    int rb;
+    uint32_t rc;
+    if (pdx_bcn_resume(&rb, &rc)) {                     /* riavvio dopo una pausa con la dashboard: si riprende */
+        printf("BEACON ripresa del ciclo %" PRIu32 " dalla banda %s\n", rc, rb ? "6 cm" : "13 cm");
+        pdx_bcn_run(&bcfg, rb, rc);
     } else {
-        printf("BEACON partenza automatica OFF (SET auto 1, SAVE per abilitarla)\n");
+        const bool quick = pdx_bcn_quick_boot();
+        pdx_bcn_print(&bcfg);
+        if (quick) {
+            printf("BEACON doppia accensione: modo configurazione (nessuna TX)\n");
+            pdx_bcn_quick_clear();
+        } else if (bcfg.auto_tx) {
+            if (pdx_bcn_wait(bcfg.wait_s)) pdx_bcn_run(&bcfg, 0, 1);
+        } else {
+            printf("BEACON partenza automatica OFF (SET auto 1, SAVE per abilitarla)\n");
+        }
     }
+    /* modo configurazione: dashboard sempre accesa */
+    pdx_web_set_state("CONFIG");
+    pdx_web_start();
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 
     char line[96];
@@ -188,12 +200,13 @@ void app_main(void)
         else if (!strcmp(cmd, "SET")) {
             char key[16] = {0}, val[40] = {0};
             if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&bcfg, key, val)) { pdx_bcn_print(&bcfg); printf("OK set (SAVE per salvare)\n"); }
-            else printf("ERR uso: SET call|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpiopol valore\n");
+            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpiopol valore\n");
         }
         else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
         else if (!strcmp(cmd, "BEACON")) {
             if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
-            pdx_bcn_run(&bcfg);
+            if (pdx_web_running()) pdx_bcn_request_run(0, 1);   /* access point acceso: riavvio per la radio pulita */
+            pdx_bcn_run(&bcfg, 0, 1);
             printf("OK beacon\n");
         }
         else if (!strcmp(cmd, "S2LTEST")) {

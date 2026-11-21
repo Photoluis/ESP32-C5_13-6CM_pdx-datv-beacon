@@ -2,5 +2,6 @@
 # Name,    Type, SubType, Offset,   Size
 nvs,       data, nvs,     0x9000,   0x6000
 phy_init,  data, phy,     0xf000,   0x1000
-factory,   app,  factory, 0x10000,  0x100000
-symbols,   data, 0x40,    0x110000, 0x2F0000
+factory,   app,  factory, 0x10000,  0x180000
+# 21/11 (B2): app a 1,5 MB; symbols da 0x190000: ES 6 cm a +0x100000 (0x290000), ES 13 cm a +0x190000 (0x320000)
+symbols,   data, 0x40,    0x190000, 0x270000

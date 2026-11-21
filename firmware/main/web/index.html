@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32-C5 PDX DATV Beacon</title>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#30363d;--fg:#e6edf3;--mut:#8b949e;--acc:#f0b429;--red:#e5534b;--blue:#539bf5;--grn:#57ab5a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:14px 16px 8px;border-bottom:1px solid var(--line)}
+h1{font-size:17px;margin:0;letter-spacing:.3px}
+.sub{color:var(--mut);font-size:13px;margin-top:2px}
+.lang{float:right}
+.lang button{background:none;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:3px 8px;margin-left:4px;font-size:13px}
+.lang button.on{border-color:var(--acc);color:var(--acc)}
+main{padding:12px 16px 90px;max-width:640px;margin:0 auto}
+.state{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-weight:600}
+.state small{display:block;color:var(--mut);font-weight:400}
+fieldset{border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:8px 12px 12px;background:var(--card)}
+legend{color:var(--acc);font-weight:600;padding:0 6px}
+.band13 legend{color:var(--red)}.band6 legend{color:var(--blue)}
+label{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0}
+label span{flex:1;color:var(--fg)}
+input,select{background:#0d1117;color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:7px 8px;font-size:15px;width:52%}
+input[type=checkbox]{width:22px;height:22px}
+input[type=range]{width:52%}
+.hint{color:var(--mut);font-size:12px;margin:-4px 0 6px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#010409;border-top:1px solid var(--line);padding:10px 12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.bar button{flex:1 1 30%;min-width:96px;border:0;border-radius:8px;padding:11px 6px;font-weight:700;font-size:14px;color:#0d1117;background:var(--acc)}
+.bar .start{background:var(--grn)}.bar .stop{background:var(--red);color:#fff}.bar .sec{background:#30363d;color:var(--fg)}
+#msg{position:fixed;left:50%;transform:translateX(-50%);bottom:74px;background:#30363d;padding:8px 14px;border-radius:8px;display:none;max-width:90%}
+</style>
+</head>
+<body>
+<header>
+  <div class="lang"><button data-l="it">IT</button><button data-l="en">EN</button><button data-l="ja">日本語</button></div>
+  <h1>ESP32-C5 PDX DATV Beacon</h1>
+  <div class="sub" id="fw">13 / 6 cm DVB-S2</div>
+</header>
+<main>
+  <div class="state"><span id="st">…</span><small data-t="st_hint"></small></div>
+
+  <fieldset><legend data-t="g_station"></legend>
+    <label><span data-t="call"></span><input id="call" maxlength="15"></label>
+    <label><span data-t="appass"></span><input id="appass" maxlength="15"></label>
+    <div class="hint" data-t="appass_h"></div>
+  </fieldset>
+
+  <fieldset class="band13"><legend data-t="g_13"></legend>
+    <label><span data-t="on"></span><input type="checkbox" id="b13"></label>
+    <label><span data-t="freq"></span><input id="f13" inputmode="decimal"></label>
+    <label><span data-t="ant"></span><select id="ant13"><option value="1">IPEX</option><option value="0" data-t="pcb"></option></select></label>
+    <label><span data-t="gpio"></span><select id="gpio13" class="gp"></select></label>
+  </fieldset>
+
+  <fieldset class="band6"><legend data-t="g_6"></legend>
+    <label><span data-t="on"></span><input type="checkbox" id="b6"></label>
+    <label><span data-t="freq"></span><input id="f6" inputmode="decimal"></label>
+    <label><span data-t="ant"></span><select id="ant6"><option value="1">IPEX</option><option value="0" data-t="pcb"></option></select></label>
+    <label><span data-t="gpio"></span><select id="gpio6" class="gp"></select></label>
+  </fieldset>
+
+  <fieldset><legend data-t="g_tx"></legend>
+    <label><span data-t="sr"></span><select id="sr"><option>125000</option><option>250000</option><option>333000</option><option>500000</option></select></label>
+    <label><span><span data-t="amp"></span> <b id="ampv"></b></span><input type="range" id="amp" min="20" max="300" step="5"></label>
+    <label><span data-t="gpiopol"></span><select id="gpiopol"><option value="1" data-t="high"></option><option value="0" data-t="low"></option></select></label>
+  </fieldset>
+
+  <fieldset><legend data-t="g_cycle"></legend>
+    <label><span data-t="tx"></span><input id="tx" type="number" min="10" max="600"></label>
+    <label><span data-t="pause"></span><input id="pause" type="number" min="5" max="3600"></label>
+    <label><span data-t="wait"></span><input id="wait" type="number" min="5" max="300"></label>
+    <label><span data-t="auto"></span><input type="checkbox" id="auto"></label>
+    <div class="hint" data-t="stop_h"></div>
+  </fieldset>
+</main>
+<div id="msg"></div>
+<div class="bar">
+  <button id="apply" data-t="apply"></button>
+  <button id="save" data-t="save"></button>
+  <button id="defs" class="sec" data-t="defaults"></button>
+  <button id="start" class="start" data-t="start"></button>
+  <button id="stop" class="stop" data-t="stop"></button>
+</div>
+<script>
+const T={
+it:{st_hint:"La dashboard è attiva nelle pause e in configurazione; durante la TX il Wi-Fi fa da modulatore.",g_station:"Stazione",call:"Nominativo",appass:"Password Wi-Fi",appass_h:"8–15 caratteri; vale dopo Salva e riavvio.",g_13:"13 cm",g_6:"6 cm",on:"Banda attiva",freq:"Frequenza (MHz)",ant:"Antenna",pcb:"PCB / ceramica",gpio:"GPIO esterno in TX",none:"nessuno",g_tx:"Trasmissione",sr:"Symbol rate (S/s)",amp:"Livello",gpiopol:"GPIO esterni attivi",high:"alti",low:"bassi",g_cycle:"Ciclo",tx:"TX per banda (s)",pause:"Pausa (s)",wait:"Attesa all'accensione (s)",auto:"Partenza automatica",stop_h:"STOP senza USB: spegni e riaccendi due volte entro 5 s, oppure STOP qui durante una pausa.",apply:"Applica",save:"Salva",defaults:"Predefiniti",start:"START",stop:"STOP / CONFIG",ok:"Fatto",err:"Errore: ",starting:"START: la scheda si riavvia e trasmette. La dashboard tornerà nella pausa."},
+en:{st_hint:"The dashboard is on during pauses and in configuration; during TX the Wi-Fi radio is the modulator.",g_station:"Station",call:"Callsign",appass:"Wi-Fi password",appass_h:"8–15 characters; used after Save and reboot.",g_13:"13 cm",g_6:"6 cm",on:"Band enabled",freq:"Frequency (MHz)",ant:"Antenna",pcb:"PCB / ceramic",gpio:"External GPIO in TX",none:"none",g_tx:"Transmission",sr:"Symbol rate (S/s)",amp:"Level",gpiopol:"External GPIOs active",high:"high",low:"low",g_cycle:"Cycle",tx:"TX per band (s)",pause:"Pause (s)",wait:"Power-on wait (s)",auto:"Automatic start",stop_h:"STOP without USB: power off and on twice within 5 s, or STOP here during a pause.",apply:"Apply",save:"Save",defaults:"Defaults",start:"START",stop:"STOP / CONFIG",ok:"Done",err:"Error: ",starting:"START: the board reboots and transmits. The dashboard returns in the pause."},
+ja:{st_hint:"ダッシュボードは休止中と設定モードで使えます。送信中はWi-Fi無線が変調器になります。",g_station:"局",call:"コールサイン",appass:"Wi-Fiパスワード",appass_h:"8〜15文字。保存して再起動後に有効。",g_13:"13 cm",g_6:"6 cm",on:"バンド有効",freq:"周波数 (MHz)",ant:"アンテナ",pcb:"基板 / セラミック",gpio:"送信時の外部GPIO",none:"なし",g_tx:"送信",sr:"シンボルレート (S/s)",amp:"レベル",gpiopol:"外部GPIOのアクティブ",high:"High",low:"Low",g_cycle:"サイクル",tx:"バンドごとの送信 (秒)",pause:"休止 (秒)",wait:"起動時の待機 (秒)",auto:"自動スタート",stop_h:"USBなしで停止: 5秒以内に電源を2回入れ直すか、休止中にここでSTOP。",apply:"適用",save:"保存",defaults:"初期値",start:"START",stop:"STOP / 設定",ok:"完了",err:"エラー: ",starting:"START: 再起動して送信します。ダッシュボードは休止中に戻ります。"}};
+const GP=[-1,0,1,2,3,4,5,6,7,8,9,10,23,24,25];
+let L="it";try{L=localStorage.getItem("lang")||(navigator.language||"it").slice(0,2)}catch(e){}
+if(!T[L])L="en";
+const $=id=>document.getElementById(id);
+function lang(l){L=l;try{localStorage.setItem("lang",l)}catch(e){}document.documentElement.lang=l;
+ document.querySelectorAll("[data-t]").forEach(e=>{const k=e.dataset.t;if(T[l][k]!==undefined)e.textContent=T[l][k]});
+ document.querySelectorAll(".lang button").forEach(b=>b.classList.toggle("on",b.dataset.l==l));
+ document.querySelectorAll(".gp").forEach(s=>{const v=s.value;s.innerHTML=GP.map(g=>`<option value="${g}">${g<0?T[l].none:"GPIO"+g}</option>`).join("");if(v!=="")s.value=v})}
+function msg(t){const m=$("msg");m.textContent=t;m.style.display="block";clearTimeout(msg.t);msg.t=setTimeout(()=>m.style.display="none",3500)}
+function db(a){return (20*Math.log10(a/480)).toFixed(1)+" dB"}
+function fill(s){$("fw").textContent=s.fw+" · 13 / 6 cm DVB-S2";$("st").textContent=s.state;
+ ["call","appass","tx","pause","wait"].forEach(k=>$(k).value=s[k]);
+ $("f13").value=(s.f13/1000).toFixed(3);$("f6").value=(s.f6/1000).toFixed(3);$("sr").value=s.sr;$("amp").value=s.amp;$("ampv").textContent=db(s.amp);
+ $("b13").checked=!!(s.bands&1);$("b6").checked=!!(s.bands&2);$("auto").checked=!!s.auto;
+ ["ant13","ant6","gpio13","gpio6","gpiopol"].forEach(k=>$(k).value=s[k])}
+function form(){const b=($("b13").checked?1:0)|($("b6").checked?2:0);
+ const f={call:$("call").value,appass:$("appass").value,f13:$("f13").value,f6:$("f6").value,sr:$("sr").value,amp:$("amp").value,
+ tx:$("tx").value,pause:$("pause").value,wait:$("wait").value,bands:b,auto:$("auto").checked?1:0,ant13:$("ant13").value,ant6:$("ant6").value,
+ gpio13:$("gpio13").value,gpio6:$("gpio6").value,gpiopol:$("gpiopol").value};
+ return Object.entries(f).map(([k,v])=>k+"="+encodeURIComponent(v)).join("&")}
+async function api(p,body){const r=await fetch(p,{method:body===undefined?"GET":"POST",body:body,headers:{"Content-Type":"application/x-www-form-urlencoded"}});
+ const j=await r.json();if(!r.ok)throw new Error(j.err||r.status);return j}
+async function load(){try{fill(await api("/api/status"))}catch(e){}}
+$("amp").oninput=()=>$("ampv").textContent=db($("amp").value);
+$("apply").onclick=async()=>{try{fill(await api("/api/set",form()));msg(T[L].ok)}catch(e){msg(T[L].err+e.message)}};
+$("save").onclick=async()=>{try{await api("/api/set",form());fill(await api("/api/save",""));msg(T[L].ok)}catch(e){msg(T[L].err+e.message)}};
+$("defs").onclick=async()=>{try{fill(await api("/api/defaults",""))}catch(e){msg(T[L].err+e.message)}};
+$("stop").onclick=async()=>{try{fill(await api("/api/stop",""));msg(T[L].ok)}catch(e){msg(T[L].err+e.message)}};
+$("start").onclick=async()=>{try{await api("/api/start","");msg(T[L].starting)}catch(e){msg(T[L].err+e.message)}};
+document.querySelectorAll(".lang button").forEach(b=>b.onclick=()=>lang(b.dataset.l));
+lang(L);load();setInterval(async()=>{try{const s=await api("/api/status");$("st").textContent=s.state}catch(e){}},3000);
+</script>
+</body>
+</html>

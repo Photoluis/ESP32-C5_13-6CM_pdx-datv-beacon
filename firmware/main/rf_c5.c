@@ -922,7 +922,7 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
 
 /* ---- P4b: comandi del TS continuo ---- */
 /* monoscopi PDXES001 nella partizione "symbols": 0 = 6 cm (assoluto 0x290000), 1 = 13 cm (assoluto 0x320000) */
-static const uint32_t LIVE_ES_PART_OFF[2] = {0x180000u, 0x210000u};
+static const uint32_t LIVE_ES_PART_OFF[2] = {0x100000u, 0x190000u};   /* partizione symbols da 0x190000 (B2) */
 #define LIVE_ES_MAP 0x90000u                         /* 576 KB ciascuno */
 static const uint8_t *live_es[2];
 static esp_partition_mmap_handle_t live_es_mh[2];
