@@ -1,4 +1,4 @@
-# ESP32-C5 Dual-Band DATV 13/6 cm — IZ7PDX
+# ESP32-C5_13-6CM_pdx-datv-beacon — IZ7PDX
 
 Trasmettitore/beacon DVB-S2 su ESP32-C5, che usa la parte TX del Wi-Fi come modulatore I/Q, in **13 cm** (2,4 GHz) e **6 cm** (5,7 GHz).
 È l'evoluzione dell'ESP32-S3-CAM_PDX DATV Beacon.
