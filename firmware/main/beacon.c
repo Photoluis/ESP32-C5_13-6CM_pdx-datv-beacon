@@ -199,8 +199,8 @@ static RTC_NOINIT_ATTR bcn_rtc_t rtc_state;
 void pdx_bcn_reboot(int mode, int band, uint32_t cycle)
 {
     rtc_state = (bcn_rtc_t){.magic = RTC_MAGIC, .cycle = cycle, .band = band, .mode = mode};
-    static const char *nm[] = {"", "TX", "PAUSA", "CONFIG"};
-    printf("BEACON riavvio -> %s (banda %s, ciclo %" PRIu32 ")\n", nm[mode & 3], band ? "6 cm" : "13 cm", cycle);
+    static const char *nm[] = {"", "TX", "PAUSA", "CONFIG", "LAB"};
+    printf("BEACON riavvio -> %s (banda %s, ciclo %" PRIu32 ")\n", nm[(unsigned)mode <= 4u ? mode : 0], band ? "6 cm" : "13 cm", cycle);
     fflush(stdout);
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();

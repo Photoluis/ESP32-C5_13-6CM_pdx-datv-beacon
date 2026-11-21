@@ -42,7 +42,7 @@ bool pdx_bcn_wait(unsigned s);
  *   RUN   TX di una banda, poi riavvio in PAUSE (o in CONFIG se fermato con BOOT)
  *   PAUSE access point e dashboard per la pausa, poi riavvio in RUN sulla banda seguente (o CONFIG se STOP)
  *   CONFIG / accensione: access point e dashboard, nessuna TX finché non arriva START (o la partenza automatica) */
-enum { PDX_BCN_BOOT_NONE = 0, PDX_BCN_BOOT_RUN = 1, PDX_BCN_BOOT_PAUSE = 2, PDX_BCN_BOOT_CONFIG = 3 };
+enum { PDX_BCN_BOOT_NONE = 0, PDX_BCN_BOOT_RUN = 1, PDX_BCN_BOOT_PAUSE = 2, PDX_BCN_BOOT_CONFIG = 3, PDX_BCN_BOOT_LAB = 4 };  /* LAB: niente access point, comandi di prova disponibili */
 void pdx_bcn_reboot(int mode, int band, uint32_t cycle);
 int pdx_bcn_boot_mode(int *band, uint32_t *cycle);     /* modo del riavvio software (NONE dopo un'accensione) */
 void pdx_bcn_request_run(int start_band, uint32_t cycle);   /* = pdx_bcn_reboot(RUN, ...) */

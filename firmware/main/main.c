@@ -143,8 +143,8 @@ void app_main(void)
         }
     }
     /* modo configurazione: dashboard sempre accesa (radio pulita: nessuna sintonia fatta in questo avvio) */
-    pdx_web_set_state("CONFIG");
-    pdx_web_start();
+    if (bm == PDX_BCN_BOOT_LAB) printf("LAB: access point spento, comandi di prova disponibili (riavvio = dashboard)\n");
+    else { pdx_web_set_state("CONFIG"); pdx_web_start(); }
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 
     char line[96];
@@ -203,6 +203,7 @@ void app_main(void)
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
         }
         else if (!strcmp(cmd, "WEBTEST")) { pdx_web_selftest(); printf("OK webtest\n"); }
+        else if (!strcmp(cmd, "LAB")) pdx_bcn_reboot(PDX_BCN_BOOT_LAB, 0, 1);
         else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
         else if (!strcmp(cmd, "SET")) {
             char key[16] = {0}, val[40] = {0};
