@@ -202,6 +202,7 @@ void app_main(void)
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
         }
+        else if (!strcmp(cmd, "WEBTEST")) { pdx_web_selftest(); printf("OK webtest\n"); }
         else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
         else if (!strcmp(cmd, "SET")) {
             char key[16] = {0}, val[40] = {0};

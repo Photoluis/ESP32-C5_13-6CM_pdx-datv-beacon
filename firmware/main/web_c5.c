@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_netif.h"
@@ -15,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_status.h"
+#include "lwip/sockets.h"
 
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_end[] asm("_binary_index_html_end");
@@ -33,6 +35,7 @@ bool pdx_web_client_seen(void) { return client_seen; }
 
 static esp_err_t h_index(httpd_req_t *r)
 {
+    printf("WEB GET /\n");
     httpd_resp_set_type(r, "text/html; charset=utf-8");
     return httpd_resp_send(r, index_html_start, index_html_end - index_html_start);
 }
@@ -51,7 +54,7 @@ static esp_err_t send_status(httpd_req_t *r)
     return httpd_resp_sendstr(r, j);
 }
 
-static esp_err_t h_status(httpd_req_t *r) { return send_status(r); }
+static esp_err_t h_status(httpd_req_t *r) { printf("WEB GET /api/status\n"); return send_status(r); }
 
 /* corpo "chiave=valore&chiave=valore" (form url-encoded, solo caratteri semplici) */
 static void urldecode(char *s)
@@ -195,4 +198,25 @@ bool pdx_web_start(void)
     stop_req = false;
     printf("WEB access point \"%s\" attivo: http://192.168.4.1\n", (char *)ap.ap.ssid);
     return true;
+}
+
+/* diagnosi: richiesta HTTP della C5 a sé stessa (127.0.0.1:80) */
+void pdx_web_selftest(void)
+{
+    const int s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s < 0) { printf("WEBTEST ERR socket (memoria?)\n"); return; }
+    struct sockaddr_in a = {.sin_family = AF_INET, .sin_port = htons(80)};
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    struct timeval tv = {.tv_sec = 3};
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    if (connect(s, (struct sockaddr *)&a, sizeof a) != 0) { printf("WEBTEST ERR connect %d\n", errno); close(s); return; }
+    const char *q = "GET /api/status HTTP/1.0\r\n\r\n";
+    send(s, q, strlen(q), 0);
+    char buf[200];
+    const int n = recv(s, buf, sizeof buf - 1, 0);
+    close(s);
+    if (n <= 0) { printf("WEBTEST ERR nessuna risposta (%d)\n", errno); return; }
+    buf[n] = 0;
+    for (char *p = buf; *p; p++) if (*p == '\r' || *p == '\n') *p = ' ';
+    printf("WEBTEST OK %d byte: %.120s\n", n, buf);
 }

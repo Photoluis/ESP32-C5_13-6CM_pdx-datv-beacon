@@ -10,4 +10,5 @@ bool pdx_web_start(void);                  /* access point + server (se già att
 bool pdx_web_running(void);
 void pdx_web_set_state(const char *state); /* testo di stato mostrato nella pagina */
 bool pdx_web_take_stop(void);              /* true una volta dopo STOP/CONFIG dalla pagina */
-bool pdx_web_client_seen(void);            /* un telefono si è collegato all'access point */
+bool pdx_web_client_seen(void);
+void pdx_web_selftest(void);              /* diagnosi: GET /api/status a 127.0.0.1 */
