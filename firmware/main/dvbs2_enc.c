@@ -28,17 +28,31 @@ static void *alloc_work(size_t n)
     return p;
 }
 
+/* 5.1.4: X^8+X^7+X^6+X^4+X^2+1, bit più significativo prima. C5 (21/11): a tabella costante in flash (prima bit per
+ * bit: ~9000 cicli per pacchetto TS, troppo per i tempi morti del modulatore) */
+static const uint8_t CRC8_TAB[256] = {
+    0,213,127,170,254,43,129,84,41,252,86,131,215,2,168,125,
+    82,135,45,248,172,121,211,6,123,174,4,209,133,80,250,47,
+    164,113,219,14,90,143,37,240,141,88,242,39,115,166,12,217,
+    246,35,137,92,8,221,119,162,223,10,160,117,33,244,94,139,
+    157,72,226,55,99,182,28,201,180,97,203,30,74,159,53,224,
+    207,26,176,101,49,228,78,155,230,51,153,76,24,205,103,178,
+    57,236,70,147,199,18,184,109,16,197,111,186,238,59,145,68,
+    107,190,20,193,149,64,234,63,66,151,61,232,188,105,195,22,
+    239,58,144,69,17,196,110,187,198,19,185,108,56,237,71,146,
+    189,104,194,23,67,150,60,233,148,65,235,62,106,191,21,192,
+    75,158,52,225,181,96,202,31,98,183,29,200,156,73,227,54,
+    25,204,102,179,231,50,152,77,48,229,79,154,206,27,177,100,
+    114,167,13,216,140,89,243,38,91,142,36,241,165,112,218,15,
+    32,245,95,138,222,11,161,116,9,220,118,163,247,34,136,93,
+    214,3,169,124,40,253,87,130,255,42,128,85,1,212,126,171,
+    132,81,251,46,122,175,5,208,173,120,210,7,83,134,44,249};
+
 uint8_t pdx_s2_crc8(const uint8_t *p, uint32_t n)
 {
-    uint8_t crc = 0;                                      /* 5.1.4: X^8+X^7+X^6+X^4+X^2+1, bit più significativo prima */
-    for (uint32_t i = 0; i < n; i++) {
-        for (int k = 7; k >= 0; k--) {
-            const uint8_t fb = (uint8_t)(((crc >> 7) ^ (p[i] >> k)) & 1u);
-            crc = (uint8_t)(crc << 1);
-            if (fb) crc ^= 0xD5;
-        }
-    }
-    return crc;
+    uint32_t crc = 0;
+    for (uint32_t i = 0; i < n; i++) crc = CRC8_TAB[crc ^ p[i]];
+    return (uint8_t)crc;
 }
 
 /* ------------------------------------------------------------ BCH (resto in 192 bit, allineato in alto) */
@@ -393,12 +407,12 @@ void pdx_s2l_job_start(pdx_s2l_job_t *j, pdx_s2_t *s, uint8_t *cw, uint16_t sync
     cw[9] = pdx_s2_crc8(cw, 9);
 }
 
-#define S2L_SCR_BYTES 32u
+#define S2L_SCR_BYTES 256u
 #define S2L_BCH_BYTES 16u
-#define S2L_XOR_BYTES 512u
+#define S2L_XOR_BYTES 128u
 
 /* un passo (al massimo qualche migliaio di cicli); true quando la parola di codice è completa */
-IRAM_ATTR bool pdx_s2l_job_step(pdx_s2l_job_t *j)
+bool pdx_s2l_job_step(pdx_s2l_job_t *j)                      /* in flash: non critico, ogni passo è misurato */
 {
     pdx_s2_t *s = j->s;
     uint8_t *cw = j->cw;
@@ -408,13 +422,9 @@ IRAM_ATTR bool pdx_s2l_job_step(pdx_s2l_job_t *j)
         const uint32_t nb = s->kbch / 8u;
         uint32_t i = j->i, st = j->prbs;
         const uint32_t e = i + S2L_SCR_BYTES < nb ? i + S2L_SCR_BYTES : nb;
-        for (; i < e; i++) {
-            uint32_t by = 0;
-            for (int k = 0; k < 8; k++) {
-                const uint32_t b = ((st >> 13) ^ (st >> 14)) & 1u;
-                st = ((st << 1) | b) & 0x7FFFu;
-                by = (by << 1) | b;
-            }
+        for (; i < e; i++) {                              /* 8 bit per volta: con x^15 + x^14 + 1 dipendono tutti */
+            const uint32_t by = ((st >> 6) ^ (st >> 7)) & 0xFFu;   /* dallo stato precedente (verificato sul PC) */
+            st = ((st << 8) | by) & 0x7FFFu;
             cw[i] ^= (uint8_t)by;
         }
         j->i = i;
@@ -472,15 +482,16 @@ IRAM_ATTR bool pdx_s2l_job_step(pdx_s2l_job_t *j)
             memset(cw + s->kldpc / 8u, 0, s->nk / 8u);
             j->stage = 3;
             j->i = 0;
+            j->r[0] = 0;
         }
         return false;
     }
-    case 3: {                                             /* parità in ordine lineare: una riga per passo */
-        const uint32_t row = j->i, q = t->q;
+    case 3: {                                             /* parità in ordine lineare: un terzo di riga per passo */
+        const uint32_t row = j->i, q = t->q, w0 = j->r[0];
         uint8_t *par = cw + s->kldpc / 8u;
         uint32_t *pr = s->ldpc_rows[row];
-        pr[11] &= 0xFFu;
-        for (uint32_t w = 0; w < W360; w++) {
+        if (w0 == 0) pr[11] &= 0xFFu;
+        for (uint32_t w = w0; w < w0 + 4u; w++) {
             uint32_t v = pr[w];
             while (v) {
                 const uint32_t b = (uint32_t)__builtin_ctz(v);
@@ -489,6 +500,8 @@ IRAM_ATTR bool pdx_s2l_job_step(pdx_s2l_job_t *j)
                 par[p >> 3] |= (uint8_t)(0x80u >> (p & 7));
             }
         }
+        if (w0 + 4u < W360) { j->r[0] = w0 + 4u; return false; }
+        j->r[0] = 0;
         if (++j->i == q) { j->stage = 4; j->i = 0; j->carry = 0; }
         return false;
     }

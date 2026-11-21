@@ -532,7 +532,7 @@ static struct {
 } lv;
 
 /* un passo del produttore; false se non c'è niente da fare (frame successivo già pronto) */
-static IRAM_ATTR __attribute__((noinline)) bool live_producer_step(void)
+static __attribute__((noinline)) bool live_producer_step(void)   /* in flash: non critico al ciclo */
 {
     if (lv.ready) return false;
     uint8_t *cw = lv.cw[lv.cur ^ 1u];
