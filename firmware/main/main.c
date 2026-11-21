@@ -27,10 +27,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <math.h>
+#include "beacon.h"
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P4c-LIVE"
+#define FW_VERSION "C5-B1-BEACON"
 
 static bool tx_armed;
 
@@ -112,6 +113,20 @@ void app_main(void)
     if (pdx_rf_init() != ESP_OK) printf("ATTENZIONE: radio non inizializzata, solo comandi di servizio\n");
     pdx_rf_pp_init();
     pdx_led_init();                          /* giallo fisso: in attesa */
+
+    /* B1: beacon autonomo. Doppia accensione (spegnere e riaccendere entro 5 s) = modo configurazione, niente TX */
+    static pdx_bcn_cfg_t bcfg;
+    pdx_bcn_load(&bcfg);
+    const bool quick = pdx_bcn_quick_boot();
+    pdx_bcn_print(&bcfg);
+    if (quick) {
+        printf("BEACON doppia accensione: modo configurazione (nessuna TX)\n");
+        pdx_bcn_quick_clear();
+    } else if (bcfg.auto_tx) {
+        if (pdx_bcn_wait(bcfg.wait_s)) pdx_bcn_run(&bcfg);
+    } else {
+        printf("BEACON partenza automatica OFF (SET auto 1, SAVE per abilitarla)\n");
+    }
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 
     char line[96];
@@ -168,6 +183,18 @@ void app_main(void)
             pdx_rf_stream(n, l, amp, ms, lat, &r);
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " cicli (budget %u) ritardo scambio max %" PRIu32
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
+        }
+        else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
+        else if (!strcmp(cmd, "SET")) {
+            char key[16] = {0}, val[40] = {0};
+            if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&bcfg, key, val)) { pdx_bcn_print(&bcfg); printf("OK set (SAVE per salvare)\n"); }
+            else printf("ERR uso: SET call|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant valore\n");
+        }
+        else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
+        else if (!strcmp(cmd, "BEACON")) {
+            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+            pdx_bcn_run(&bcfg);
+            printf("OK beacon\n");
         }
         else if (!strcmp(cmd, "S2LTEST")) {
             /* S2LTEST <frame>: percorso a passi + mappatura pigra contro il codificatore di riferimento. Nessuna RF. */

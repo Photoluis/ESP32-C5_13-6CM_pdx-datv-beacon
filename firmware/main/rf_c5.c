@@ -921,22 +921,33 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
 }
 
 /* ---- P4b: comandi del TS continuo ---- */
-#define LIVE_ES_PART_OFF 0x180000u            /* file PDXES001 nella partizione "symbols" (assoluto 0x290000) */
-#define LIVE_ES_MAP      0x170000u
-static const uint8_t *live_es;
-static esp_partition_mmap_handle_t live_es_mh;
+/* monoscopi PDXES001 nella partizione "symbols": 0 = 6 cm (assoluto 0x290000), 1 = 13 cm (assoluto 0x320000) */
+static const uint32_t LIVE_ES_PART_OFF[2] = {0x180000u, 0x210000u};
+#define LIVE_ES_MAP 0x90000u                         /* 576 KB ciascuno */
+static const uint8_t *live_es[2];
+static esp_partition_mmap_handle_t live_es_mh[2];
+static int live_src;                                 /* monoscopio scelto per la prossima S2LIVE */
+static char live_service[24] = "IZ7PDX", live_provider[40] = "IZ7PDX BEACON C5";
 
-static const char *live_es_open(void)
+static const char *live_es_open(int k)
 {
-    if (live_es) return NULL;
+    if (k < 0 || k > 1) return "monoscopio";
+    if (live_es[k]) return NULL;
     const esp_partition_t *pt = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "symbols");
     if (!pt) return "partizione symbols";
     const void *ptr;
-    if (esp_partition_mmap(pt, LIVE_ES_PART_OFF, LIVE_ES_MAP, ESP_PARTITION_MMAP_DATA, &ptr, &live_es_mh) != ESP_OK)
+    if (esp_partition_mmap(pt, LIVE_ES_PART_OFF[k], LIVE_ES_MAP, ESP_PARTITION_MMAP_DATA, &ptr, &live_es_mh[k]) != ESP_OK)
         return "mmap ES";
-    if (memcmp(ptr, "PDXES001", 8) != 0) { esp_partition_munmap(live_es_mh); return "file ES assente"; }
-    live_es = ptr;
+    if (memcmp(ptr, "PDXES001", 8) != 0) { esp_partition_munmap(live_es_mh[k]); return "file ES assente"; }
+    live_es[k] = ptr;
     return NULL;
+}
+
+void pdx_rf_live_source(int es, const char *service, const char *provider)
+{
+    live_src = es;
+    snprintf(live_service, sizeof live_service, "%s", service);
+    snprintf(live_provider, sizeof live_provider, "%s", provider);
 }
 
 void pdx_rf_live_stats(pdx_live_stats_t *st)
@@ -959,9 +970,9 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     *r = (pdx_stream_res_t){0};
     if (sr < 100000u || sr > 1000000u) return "SR";
-    const char *e = live_es_open();
+    const char *e = live_es_open(live_src);
     if (e) return e;
-    e = live_prepare(live_es, sr, "3/4", "IZ7PDX", "IZ7PDX BEACON C5");
+    e = live_prepare(live_es[live_src], sr, "3/4", live_service, live_provider);
     if (e) return e;
     const uint32_t tot = 40000000u / sr;
     qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
@@ -992,9 +1003,9 @@ const char *pdx_rf_s2ltest(uint32_t nframes, uint32_t *ok, uint32_t *bad_sym, ui
     *ok = 0;
     *bad_sym = 0;
     *steps_max_cyc = 0;
-    const char *e = live_es_open();
+    const char *e = live_es_open(0);
     if (e) return e;
-    e = live_prepare(live_es, 333000u, "3/4", "IZ7PDX", "IZ7PDX BEACON C5");
+    e = live_prepare(live_es[0], 333000u, "3/4", "IZ7PDX", "IZ7PDX BEACON C5");
     if (e) return e;
     /* il primo frame è già in cw[0]: rifà il percorso frame per frame salvando il DATA FIELD prima della codifica */
     uint8_t *field = (uint8_t *)0x40830000u;              /* banco 1, metà alta */

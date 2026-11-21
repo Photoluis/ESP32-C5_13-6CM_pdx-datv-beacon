@@ -61,6 +61,8 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
                           pdx_stream_res_t *r);
 const char *pdx_rf_s2ltest(uint32_t nframes, uint32_t *ok, uint32_t *bad_sym, uint32_t *steps_max_cyc);
 void pdx_rf_live_stats(pdx_live_stats_t *st);
+/* monoscopio (0 = 6 cm, 1 = 13 cm) e nomi della SDT per le prossime S2LIVE */
+void pdx_rf_live_source(int es, const char *service, const char *provider);
 uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *ctrl_end);
 void pdx_rf_pp_init(void);   /* crea il task con lo stack statico nel banco 0 */
 void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r);
