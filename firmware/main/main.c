@@ -26,9 +26,11 @@
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <math.h>
+#include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-P4b-LIVE"
+#define FW_VERSION "C5-P4c-LIVE"
 
 static bool tx_armed;
 
@@ -109,10 +111,13 @@ void app_main(void)
 
     if (pdx_rf_init() != ESP_OK) printf("ATTENZIONE: radio non inizializzata, solo comandi di servizio\n");
     pdx_rf_pp_init();
+    pdx_led_init();                          /* giallo fisso: in attesa */
     printf("\nPDX ESP32-C5 %s pronto (nessun comando trasmette)\n", FW_VERSION);
 
     char line[96];
+    bool led_red = false;
     for (;;) {
+        if (led_red) { pdx_led_idle(); led_red = false; }
         if (!fgets(line, sizeof line, stdin)) { vTaskDelay(pdMS_TO_TICKS(10)); continue; }
         char *p = line + strspn(line, " \r\n");
         char cmd[16] = {0};
@@ -120,6 +125,19 @@ void app_main(void)
         const int k = sscanf(p, "%15s %u %u", cmd, &a, &b);
         if (k < 1) continue;
         for (char *c = cmd; *c; c++) if (*c >= 'a' && *c <= 'z') *c -= 32;
+        {
+            static const char *txc[] = {"REFTONE", "DACP", "DACPAT", "DPAT", "PP", "STREAM", "QPSK", "S2PLAY",
+                                        "S2LIVE"};
+            for (unsigned i = 0; i < sizeof txc / sizeof txc[0]; i++)
+                if (tx_armed && !strcmp(cmd, txc[i])) {
+                    int amp = 250;
+                    sscanf(p, "%*s %*s %d", &amp);         /* il livello decide la velocita' del lampeggio */
+                    if (!strcmp(cmd, "S2PLAY") || !strcmp(cmd, "QPSK") || !strcmp(cmd, "REFTONE")) amp = 250;
+                    if (amp < 5) amp = 5;
+                    pdx_led_tx(20.0 * log10((double)amp / 480.0));
+                    led_red = true;
+                }
+        }
         if (!strcmp(cmd, "INFO")) cmd_info();
         else if (!strcmp(cmd, "ANT") && k >= 2) cmd_ant((int)a);
         else if (!strcmp(cmd, "FREQ") && k >= 2) printf(pdx_rf_tune(a) ? "OK freq %u\n" : "ERR freq %u\n", a);
@@ -133,7 +151,7 @@ void app_main(void)
             if (sscanf(p, "%*s %x %x %u", &cv, &io, &dt) != 3) { printf("ERR uso: SCAN <ctrl_hex> <idx_off_hex> <dt>\n"); continue; }
             uint32_t *a, *b, *t;
             pdx_rf_scan(cv, io, dt, &a, &b, &t);
-            for (unsigned i = 0; i < 32; i++)
+            for (unsigned i = 0; i < 16; i++)
                 if (a[i] != b[i]) printf("DIFF +%03x riposo %08" PRIx32 " corsa %08" PRIx32 "\n", 4 * i, a[i], b[i]);
             printf("SERIE +%03x ogni %u cicli:", io & 0x1FC, dt);
             for (unsigned i = 0; i < 16; i++) printf(" %08" PRIx32, t[i]);
@@ -159,25 +177,32 @@ void app_main(void)
             else printf("OK s2ltest frame uguali %" PRIu32 "/%u simboli diversi %" PRIu32 " passo max %" PRIu32 " cicli\n",
                         ok, k >= 2 ? a : 5, bad, smax);
         }
-        else if (!strcmp(cmd, "S2LIVE")) {
-            /* S2LIVE <sr> <amp> <ms> [lat] [qinv]: TS continuo generato sulla C5, stop col tasto BOOT */
-            if (!tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
+        else if (!strcmp(cmd, "S2LIVE") || !strcmp(cmd, "S2LDRY")) {
+            /* S2LIVE <sr> <amp> <ms> [lat] [qinv]: TS continuo generato sulla C5, stop col tasto BOOT.
+             * S2LDRY: stessa cosa a secco (motore del DAC in corsa, nessuna RF), per misurare il produttore. */
+            const bool dry = !strcmp(cmd, "S2LDRY");
+            if (!dry && !tx_armed) { printf("ERR non armato (TXARM)\n"); continue; }
             unsigned sr, ms, lat = 50, qinv = 0;
             int amp;
             if (sscanf(p, "%*s %u %d %u %u %u", &sr, &amp, &ms, &lat, &qinv) < 3) { printf("ERR uso: S2LIVE <sr> <amp> <ms> [lat] [qinv]\n"); continue; }
-            printf("TX S2LIVE %u MHz SR %u amp %d ms %u (stop: BOOT)\n", pdx_rf_mhz(), sr, amp, ms);
+            printf("%s S2LIVE %u MHz SR %u amp %d ms %u (stop: BOOT)\n", dry ? "A SECCO" : "TX", pdx_rf_mhz(), sr, amp, ms);
             fflush(stdout);
             vTaskDelay(pdMS_TO_TICKS(50));
             pdx_stream_res_t r;
-            const char *e = pdx_rf_s2live(sr, amp, ms, lat, qinv, &r);
+            const char *e = pdx_rf_s2live(sr, amp, ms, lat, qinv, dry, &r);
             if (e) { printf("ERR s2live %s\n", e); continue; }
             pdx_live_stats_t st;
             pdx_rf_live_stats(&st);
             printf("intervalli %" PRIu32 " riempimento max %" PRIu32 " ritardo max %" PRIu32 " sforamenti %" PRIu32
                    " fermato %" PRIu32 "\n", r.intervals, r.fill_max, r.late_max, r.overruns, r.stopped);
             printf("frame %" PRIu32 " DUMMY %" PRIu32 " passi %" PRIu32 " passo max %" PRIu32 " cicli TS %.0f bit/s "
-                   "pacchetti nulli %" PRIu32 " video %" PRIu32 " audio %" PRIu32 "\nOK s2live\n", st.frames, st.dummies,
+                   "pacchetti nulli %" PRIu32 " video %" PRIu32 " audio %" PRIu32 "\n", st.frames, st.dummies,
                    st.steps, st.step_max, st.ts_rate, st.null_pk, st.video_pk, st.audio_pk);
+            static const char *ph[8] = {"campo", "pacchetti", "scrambling", "BCH", "LDPC", "parita'", "xor", "-"};
+            for (int i = 0; i < 7; i++)
+                if (st.st_n[i]) printf("fase %-10s passi %7" PRIu32 " max %6" PRIu32 " cicli  totale %8" PRIu32 " kcicli\n",
+                                       ph[i], st.st_n[i], st.st_max[i], st.st_kcyc[i]);
+            printf("OK s2live\n");
         }
         else if (!strcmp(cmd, "S2TEST")) {
             /* codificatore DVB-S2 della C5 contro encoder.py (42 casi a 0x310000), con i tempi per frame. Nessuna RF. */

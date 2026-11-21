@@ -1,0 +1,38 @@
+/* ESP32-S3-CAM_PDX DATV Beacon - IZ7PDX - GPL-3.0
+ * LED RGB della scheda (WS2812 su GPIO48, schema Freenove / diymore ESP32-S3-CAM): semaforo dello stato, per tutte le
+ * funzioni del beacon (richiesta dell'utente del 04/11, al posto del colore "di calore"):
+ *   RX        verde fisso al 50%
+ *   attesa    giallo fisso al 30% (configurazione, pause del ciclo, decodifica)
+ *   TX        rosso al 50% lampeggiante, da 1 Hz a PDX_LED_DB_MIN fino a 5 Hz a PDX_LED_DB_MAX
+ *   conferma  giallo lampeggiante lento (Applica / Salva), attività: verde lampeggiante veloce (seriale, web)
+ * Modi: normale, minimo (stessi colori alla luminosità più bassa visibile), spento.
+ * Il lampeggio è un ciclo hardware dell'RMT: continua da solo mentre il core 0 ha gli interrupt disattivati.
+ * XIAO ESP32S3: LED giallo a un colore su GPIO21 (acceso a livello basso), gli stati si distinguono dal ritmo:
+ *   RX acceso fisso, attesa un lampo breve ogni 2 s, TX lampeggio da 1 a 5 Hz, QSO / attività ~8 Hz, conferma 1 Hz;
+ *   minimo = lampi da 20 ms con lo stesso ritmo. */
+#pragma once
+#include <stdint.h>
+#include "sdkconfig.h"
+
+#if CONFIG_PDX_BOARD_XIAO_S3
+#define PDX_LED_GPIO 21
+#else
+#define PDX_LED_GPIO 27              /* ESP32-C5-Zero: WS2812B-1010 su GPIO27 (schema Waveshare) */
+#endif
+#define PDX_LED_DB_MIN (-40.0)       /* scala del livello del beacon (cursore della pagina web) */
+#define PDX_LED_DB_MAX (-5.0)
+
+enum { PDX_LED_NORMAL, PDX_LED_MIN, PDX_LED_OFF };   /* minimo / spento: per alimentazione a batteria e pannello */
+
+void pdx_led_init(void);
+void pdx_led_set_mode(int mode);                    /* riapplica subito l'ultimo stato */
+void pdx_led_idle(void);                            /* giallo fisso */
+void pdx_led_rx(void);                              /* verde fisso */
+void pdx_led_qso(void);                             /* verde veloce: nominativo acquisito dal Parrot, fino alla risposta */
+void pdx_led_tx(double level_db);                   /* rosso lampeggiante */
+void pdx_led_rgb(uint8_t r, uint8_t g, uint8_t b);  /* colore fisso qualsiasi */
+/* avvisi brevi, solo in attesa (mai durante TX o RX), poi si torna allo stato di base:
+ * conferma = giallo lampeggiante lento per 3 s (parametri applicati / salvati)
+ * attività = verde lampeggiante veloce per 0,4 s (comando dalla seriale o richiesta web) */
+void pdx_led_confirm(void);
+void pdx_led_activity(void);

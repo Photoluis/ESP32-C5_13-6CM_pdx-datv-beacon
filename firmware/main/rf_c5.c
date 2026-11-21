@@ -66,6 +66,8 @@ esp_err_t pdx_rf_init(void)
     TRY(esp_wifi_set_promiscuous(true));
     TRY(esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE));
     pdx_rf_tune(2412);
+    uint32_t us;
+    pdx_rf_capture(256, 0, &us);              /* configura il blocco dump (serve anche al replay del DAC) */
     return ESP_OK;
 }
 
@@ -101,6 +103,13 @@ unsigned pdx_rf_mhz(void) { return cur_mhz; }
 #include "freertos/task.h"
 
 extern void force_txon(int on);
+
+/* 21/11: il replay del DAC esce solo con il campo sorgente di 0x600A9008 (bit 17..20) = 0xF, che finora impostava di
+ * nascosto la cattura RX (adctrig). Sopravvive ai reset software ma non allo spegnimento: si imposta a ogni TX. */
+static bool tx_dry;                          /* prova a secco: motore del DAC in corsa ma senza force_txon (niente RF) */
+static void dump_src_cfg(void) { wr(PDX_C5_DUMP_BASE + 8u, (rd(PDX_C5_DUMP_BASE + 8u) & ~0x1E0000u) | 0x1E0000u); }
+static void tx_on(void) { dump_src_cfg(); if (!tx_dry) force_txon(1); }
+static void tx_off(void) { if (!tx_dry) force_txon(0); }
 extern void phy_txcal_work_mode(void);
 
 void pdx_rf_ref_tone(unsigned backoff, unsigned ms)
@@ -146,7 +155,7 @@ void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigne
 
     r->owner_before = rd(PDX_C5_SRAM_OWNER);
     r->ctrl_before = rd(ctrl);
-    force_txon(1);
+    tx_on();
     esp_rom_delay_us(3000);
     wr(PDX_C5_SRAM_OWNER, (r->owner_before & ~0xF00u) | 0x200u | 0x10000u);   /* banco 1 + 64 KB -> 0x40830000 */
     wr(ctrl, r->ctrl_before & ~(1u << 31));
@@ -172,7 +181,7 @@ void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigne
     wr(ctrl, r->ctrl_before);
     r->ctrl_after = rd(ctrl);
     wr(PDX_C5_SRAM_OWNER, r->owner_before);
-    force_txon(0);
+    tx_off();
     phy_txcal_work_mode();
     pdx_rf_tune(cur_mhz);
 }
@@ -182,7 +191,7 @@ static void replay_run(uint32_t off, uint32_t val, unsigned ms, pdx_dacp_res_t *
     const uint32_t ctrl = PDX_C5_DUMP_BASE + (off & 0xFFCu);
     r->owner_before = rd(PDX_C5_SRAM_OWNER);
     r->ctrl_before = rd(ctrl);
-    force_txon(1);
+    tx_on();
     esp_rom_delay_us(3000);
     wr(PDX_C5_SRAM_OWNER, (r->owner_before & ~0xF00u) | 0x200u | 0x10000u);
     wr(ctrl, r->ctrl_before & ~(1u << 31));
@@ -198,7 +207,7 @@ static void replay_run(uint32_t off, uint32_t val, unsigned ms, pdx_dacp_res_t *
     wr(ctrl, r->ctrl_before);
     r->ctrl_after = rd(ctrl);
     wr(PDX_C5_SRAM_OWNER, r->owner_before);
-    force_txon(0);
+    tx_off();
     phy_txcal_work_mode();
     pdx_rf_tune(cur_mhz);
 }
@@ -233,7 +242,7 @@ void pdx_rf_owner_test(uint32_t out[4])
 }
 
 /* ------------------------------------------------------------------ P2g: ricerca del contatore (senza TX) */
-#define SCAN_N 32u
+#define SCAN_N 16u
 static uint32_t scan_a[SCAN_N], scan_b[SCAN_N], scan_t[16];
 
 /* replay avviato SENZA force_txon: legge due volte 0x600A9000.. e 16 volte il registro idx_off a intervalli di dt cicli */
@@ -519,6 +528,7 @@ static struct {
     uint8_t prev_crc;
     uint8_t pkt[188];
     uint32_t frames, dummies, step_max, steps;
+    uint32_t st_max[8], st_kcyc[8], st_n[8];   /* per fase: 0 nuovo campo, 1 pacchetti, 2+ job (scr, bch, ldpc, par, xor) */
 } lv;
 
 /* un passo del produttore; false se non c'è niente da fare (frame successivo già pronto) */
@@ -683,10 +693,14 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
         if (stream_kind == 3) {                                   /* tempi morti: passi del produttore DVB-S2 */
             const uint32_t dl = tsw + per - 14000u;               /* margine 58 us prima dello scambio */
             while ((int32_t)(esp_cpu_get_cycle_count() - dl) < 0) {
+                const uint32_t ph = lv.pstage < 2u ? lv.pstage : 2u + (live_job.stage < 5u ? live_job.stage : 5u);
                 const uint32_t s0 = esp_cpu_get_cycle_count();
                 if (!live_producer_step()) break;
                 const uint32_t sc = esp_cpu_get_cycle_count() - s0;
                 if (sc > lv.step_max) lv.step_max = sc;
+                if (sc > lv.st_max[ph]) lv.st_max[ph] = sc;
+                lv.st_kcyc[ph] += (sc + 512u) >> 10;
+                lv.st_n[ph]++;
                 lv.steps++;
             }
         }
@@ -721,7 +735,7 @@ static void stream_run(const pp_req_t *q)
         stream_fill(PDX_PP_B, 0, n, l);
     }
     const uint32_t intervals = (uint32_t)((uint64_t)q->ms * 40000u / n);
-    force_txon(1);
+    tx_on();
     esp_rom_delay_us(3000);
     static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
     taskENTER_CRITICAL(&mux);
@@ -736,7 +750,7 @@ static void stream_run(const pp_req_t *q)
     wr(ctrl, ctrl0);
     wr(PDX_C5_SRAM_OWNER, owner0);
     taskEXIT_CRITICAL(&mux);
-    force_txon(0);
+    tx_off();
     phy_txcal_work_mode();
     pdx_rf_tune(cur_mhz);
 }
@@ -760,7 +774,7 @@ static void pp_task_fn(void *arg)
         const uint32_t base = owner0 & ~0x10F00u;
         r->owner_a = base | 0x200u | (q->alloc ? 0x10000u : 0);
         r->owner_b = base | 0x400u | (q->alloc ? 0x10000u : 0);
-        force_txon(1);
+        tx_on();
         esp_rom_delay_us(3000);
         static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
         taskENTER_CRITICAL(&mux);
@@ -775,7 +789,7 @@ static void pp_task_fn(void *arg)
         wr(ctrl, ctrl0);
         wr(PDX_C5_SRAM_OWNER, owner0);
         taskEXIT_CRITICAL(&mux);
-        force_txon(0);
+        tx_off();
         phy_txcal_work_mode();
         pdx_rf_tune(cur_mhz);
         *q->r = res;
@@ -930,9 +944,11 @@ void pdx_rf_live_stats(pdx_live_stats_t *st)
     st->null_pk = live_mux.stats_null;
     st->video_pk = live_mux.stats_video;
     st->audio_pk = live_mux.stats_audio;
+    for (int i = 0; i < 8; i++) { st->st_max[i] = lv.st_max[i]; st->st_kcyc[i] = lv.st_kcyc[i]; st->st_n[i] = lv.st_n[i]; }
 }
 
-const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r)
+const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, unsigned dry,
+                          pdx_stream_res_t *r)
 {
     if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
@@ -951,6 +967,7 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     if (fx.fr >= sr) return "SR non realizzabile";
     sym_qinv = qinv ? 1u : 0u;
     stream_kind = 3;
+    tx_dry = dry != 0;
     pp_req = (pp_req_t){.mode = 10, .ms = ms, .n = 12000, .l = hold, .lat = lat, .amp = amp, .sres = r,
                         .caller = xTaskGetCurrentTaskHandle()};
     esp_wifi_set_promiscuous(false);
@@ -959,6 +976,7 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     esp_wifi_set_promiscuous(true);
     stream_kind = 0;
+    tx_dry = false;
     return NULL;
 }
 

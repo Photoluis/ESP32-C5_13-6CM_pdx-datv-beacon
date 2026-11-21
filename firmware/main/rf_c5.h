@@ -51,8 +51,14 @@ void pdx_rf_stream(uint32_t n, uint32_t l, int amp, unsigned ms, uint32_t lat, p
 /* P3a: QPSK RRC 0,35 con simboli PRBS, SR = 40e6 / (15 * hold) (hold 4/8/16 -> 667/333/167 kS) */
 void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, pdx_stream_res_t *r);
 /* P4b: TS continuo generato sulla C5 dal monoscopio ES (partizione symbols + 0x180000), DVB-S2 QPSK 3/4 normal + pilot */
-typedef struct { uint32_t frames, dummies, step_max, steps, null_pk, video_pk, audio_pk; double ts_rate; } pdx_live_stats_t;
-const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream_res_t *r);
+typedef struct {
+    uint32_t frames, dummies, step_max, steps, null_pk, video_pk, audio_pk;
+    uint32_t st_max[8], st_kcyc[8], st_n[8];   /* per fase del produttore */
+    double ts_rate;
+} pdx_live_stats_t;
+/* dry = 1: prova a secco, motore del DAC in corsa ma senza force_txon (nessuna RF) */
+const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsigned qinv, unsigned dry,
+                          pdx_stream_res_t *r);
 const char *pdx_rf_s2ltest(uint32_t nframes, uint32_t *ok, uint32_t *bad_sym, uint32_t *steps_max_cyc);
 void pdx_rf_live_stats(pdx_live_stats_t *st);
 uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *ctrl_end);
