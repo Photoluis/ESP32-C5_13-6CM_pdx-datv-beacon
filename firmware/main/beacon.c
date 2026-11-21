@@ -111,7 +111,7 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     if (!strcmp(key, "f13")) return freq_khz(val, 2300, 2450, &c->f13_khz);
     if (!strcmp(key, "f6")) return freq_khz(val, 5650, 5850, &c->f6_khz);
     if (!strcmp(key, "sr") && num(val, 125000, 1000000, &x) &&
-        (x == 125000 || x == 250000 || x == 333000 || x == 500000 || x == 1000000)) { c->sr = (uint32_t)x; return true; }
+        (x == 125000 || x == 250000 || x == 333000 || x == 500000)) { c->sr = (uint32_t)x; return true; }   /* 1000 kS: in sviluppo (21/11 a secco si blocca) */
     if (!strcmp(key, "amp") && num(val, 20, 300, &x)) { c->amp = (int32_t)x; return true; }
     if (!strcmp(key, "tx") && num(val, 10, 600, &x)) { c->tx_s = (uint16_t)x; return true; }
     if (!strcmp(key, "pause") && num(val, 5, 3600, &x)) { c->pause_s = (uint16_t)x; return true; }
