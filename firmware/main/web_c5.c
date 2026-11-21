@@ -43,14 +43,15 @@ static esp_err_t h_index(httpd_req_t *r)
 
 static esp_err_t send_status(httpd_req_t *r)
 {
-    char j[640];
+    char j[720];
     const pdx_bcn_cfg_t *c = cfg;
     snprintf(j, sizeof j,
-             "{\"fw\":\"%s\",\"state\":\"%s\",\"call\":\"%s\",\"appass\":\"%s\",\"f13\":%" PRIu32 ",\"f6\":%" PRIu32
+             "{\"fw\":\"%s\",\"state\":\"%s\",\"ssid\":\"%s\",\"call\":\"%s\",\"appass\":\"%s\",\"f13\":%" PRIu32 ",\"f6\":%" PRIu32
              ",\"sr\":%" PRIu32 ",\"amp\":%" PRIi32 ",\"tx\":%u,\"pause\":%u,\"wait\":%u,\"bands\":%u,\"auto\":%u,"
-             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d}",
-             fw_version, state_txt, c->call, c->ap_pass, c->f13_khz, c->f6_khz, c->sr, c->amp, c->tx_s, c->pause_s,
-             c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol, c->gpio_ptt);
+             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d,\"gpiostop\":%d,\"stopnow\":%u}",
+             fw_version, state_txt, PDX_WEB_SSID, c->call, c->ap_pass, c->f13_khz, c->f6_khz, c->sr, c->amp, c->tx_s,
+             c->pause_s, c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol, c->gpio_ptt,
+             c->gpio_stop, pdx_bcn_stop_gpio_active() ? 1u : 0u);
     httpd_resp_set_type(r, "application/json");
     return httpd_resp_sendstr(r, j);
 }
@@ -87,6 +88,8 @@ static esp_err_t h_set(httpd_req_t *r)
             strncat(bad, " ", sizeof bad - strlen(bad) - 1);
         }
     }
+    const char *cf = bad[0] ? NULL : pdx_bcn_check(&t);
+    if (cf) snprintf(bad, sizeof bad, "%s (GPIO gia' usato)", cf);
     if (bad[0]) {
         httpd_resp_set_status(r, "400 Bad Request");
         char m[200];
@@ -95,6 +98,7 @@ static esp_err_t h_set(httpd_req_t *r)
         return httpd_resp_sendstr(r, m);
     }
     *cfg = t;
+    pdx_bcn_stop_gpio_init(cfg);
     pdx_led_confirm();
     printf("WEB configurazione applicata\n");
     return send_status(r);
@@ -161,7 +165,7 @@ bool pdx_web_start(void)
         netif_done = true;
     }
     wifi_config_t ap = {0};
-    snprintf((char *)ap.ap.ssid, sizeof ap.ap.ssid, "%s-BEACON", cfg->call);
+    snprintf((char *)ap.ap.ssid, sizeof ap.ap.ssid, "%s", PDX_WEB_SSID);
     snprintf((char *)ap.ap.password, sizeof ap.ap.password, "%s", cfg->ap_pass);
     ap.ap.ssid_len = (uint8_t)strlen((char *)ap.ap.ssid);
     ap.ap.channel = 1;

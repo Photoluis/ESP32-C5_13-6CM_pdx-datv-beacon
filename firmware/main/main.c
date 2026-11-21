@@ -32,7 +32,7 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B2c-WEB"
+#define FW_VERSION "C5-B2d-WEB"
 
 static bool tx_armed;
 
@@ -119,6 +119,7 @@ void app_main(void)
     static pdx_bcn_cfg_t bcfg;
     pdx_bcn_load(&bcfg);
     pdx_web_init(&bcfg, FW_VERSION);
+    pdx_bcn_stop_gpio_init(&bcfg);                       /* GPIO STOP: a massa = beacon fermo, dashboard accesa */
     int rb = 0;
     uint32_t rc = 1;
     const int bm = pdx_bcn_boot_mode(&rb, &rc);
@@ -134,6 +135,8 @@ void app_main(void)
         if (quick) {
             printf("BEACON doppia accensione: modo configurazione (nessuna TX)\n");
             pdx_bcn_quick_clear();
+        } else if (pdx_bcn_stop_gpio_active()) {
+            printf("BEACON GPIO%d STOP a massa: modo configurazione (nessuna TX)\n", bcfg.gpio_stop);
         } else if (bcfg.auto_tx) {
             pdx_web_set_state("ATTESA prima del beacon");
             pdx_web_start();                              /* la dashboard c'è già durante l'attesa */
@@ -207,8 +210,16 @@ void app_main(void)
         else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
         else if (!strcmp(cmd, "SET")) {
             char key[16] = {0}, val[40] = {0};
-            if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&bcfg, key, val)) { pdx_bcn_print(&bcfg); printf("OK set (SAVE per salvare)\n"); }
-            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpioptt|gpiopol valore\n");
+            pdx_bcn_cfg_t t = bcfg;
+            const char *cf = NULL;
+            if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&t, key, val) && !(cf = pdx_bcn_check(&t))) {
+                bcfg = t;
+                pdx_bcn_stop_gpio_init(&bcfg);
+                pdx_bcn_print(&bcfg);
+                printf("OK set (SAVE per salvare)\n");
+            }
+            else if (cf) printf("ERR %s: GPIO gia' usato da un'altra funzione\n", cf);
+            else printf("ERR uso: SET call|appass|f13|f6|sr|amp|tx|pause|wait|bands|auto|ant13|ant6|gpio13|gpio6|gpioptt|gpiostop|gpiopol valore\n");
         }
         else if (!strcmp(cmd, "SAVE")) printf(pdx_bcn_save(&bcfg) ? "OK save\n" : "ERR save\n");
         else if (!strcmp(cmd, "BEACON")) {

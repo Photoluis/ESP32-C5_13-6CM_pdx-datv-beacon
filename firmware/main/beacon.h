@@ -21,7 +21,8 @@ typedef struct {
     int8_t gpio13, gpio6;   /* GPIO esterno attivo durante la TX della banda (relè, commutatore), -1 = nessuno */
     uint8_t gpio_pol;       /* 1 = attivo alto, 0 = attivo basso */
     int8_t gpio_ptt;        /* GPIO TX/standby (PTT) attivo durante qualunque TX, -1 = nessuno */
-    uint8_t rsv[2];
+    int8_t gpio_stop;       /* GPIO STOP: ingresso con pull-up, a massa = beacon fermo e Wi-Fi acceso, -1 = nessuno */
+    uint8_t rsv[1];
     char ap_pass[16];       /* password dell'access point della dashboard (8..15 caratteri) */
 } pdx_bcn_cfg_t;
 
@@ -31,6 +32,10 @@ bool pdx_bcn_save(const pdx_bcn_cfg_t *c);
 void pdx_bcn_print(const pdx_bcn_cfg_t *c);
 bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val);   /* false se chiave o valore non validi */
 bool pdx_bcn_gpio_ok(int g);                                            /* GPIO esterno consentito */
+const char *pdx_bcn_check(const pdx_bcn_cfg_t *c);                      /* NULL = ok, altrimenti GPIO in conflitto */
+/* GPIO STOP: configura l'ingresso (pull-up) e lo aggiunge al BOOT nel ciclo della TX; true = a massa adesso */
+void pdx_bcn_stop_gpio_init(const pdx_bcn_cfg_t *c);
+bool pdx_bcn_stop_gpio_active(void);
 
 /* doppia accensione: true se l'avvio precedente è stato interrotto entro 5 s (=> configurazione, niente TX) */
 bool pdx_bcn_quick_boot(void);

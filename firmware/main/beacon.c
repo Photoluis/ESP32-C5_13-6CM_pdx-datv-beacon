@@ -16,10 +16,12 @@
 #include "nvs.h"
 #include "rf_c5.h"
 #include "esp_attr.h"
+#include "esp_rom_sys.h"
 #include "esp_system.h"
 #include "web_c5.h"
 
-#define CFG_VER  4u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT */
+#define CFG_VER  5u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT; 5: GPIO STOP */
+#define STOP_GPIO_DEF 10             /* GPIO STOP predefinito (connettore, non di strapping) */
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
 
@@ -43,6 +45,7 @@ void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
     c->gpio6 = -1;
     c->gpio_pol = 1;
     c->gpio_ptt = -1;
+    c->gpio_stop = STOP_GPIO_DEF;
     snprintf(c->ap_pass, sizeof c->ap_pass, "pdxbeacon");
 }
 
@@ -53,7 +56,10 @@ void pdx_bcn_load(pdx_bcn_cfg_t *c)
     if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return;
     pdx_bcn_cfg_t t;
     size_t n = sizeof t;
-    if (nvs_get_blob(h, "cfg", &t, &n) == ESP_OK && n == sizeof t && t.ver == CFG_VER) *c = t;
+    if (nvs_get_blob(h, "cfg", &t, &n) == ESP_OK && n == sizeof t) {
+        if (t.ver == 4u) { t.ver = CFG_VER; t.gpio_stop = STOP_GPIO_DEF; t.rsv[0] = 0; }   /* v4 -> v5: stessa struttura, GPIO STOP predefinito */
+        if (t.ver == CFG_VER) *c = t;
+    }
     nvs_close(h);
 }
 
@@ -77,8 +83,10 @@ void pdx_bcn_print(const pdx_bcn_cfg_t *c)
     if (c->gpio13 >= 0) snprintf(g13, sizeof g13, " + GPIO%d", c->gpio13);
     if (c->gpio6 >= 0) snprintf(g6, sizeof g6, " + GPIO%d", c->gpio6);
     if (c->gpio_ptt >= 0) snprintf(gp, sizeof gp, "GPIO%d", c->gpio_ptt);
-    printf("CONFIG antenna 13cm %s%s  6cm %s%s  PTT %s  GPIO esterni attivi %s\n", c->ant13 ? "IPEX" : "PCB", g13,
-           c->ant6 ? "IPEX" : "PCB", g6, gp, c->gpio_pol ? "alti" : "bassi");
+    char gs[12] = "nessuno";
+    if (c->gpio_stop >= 0) snprintf(gs, sizeof gs, "GPIO%d", c->gpio_stop);
+    printf("CONFIG antenna 13cm %s%s  6cm %s%s  PTT %s  GPIO esterni attivi %s  STOP %s (a massa)\n", c->ant13 ? "IPEX" : "PCB", g13,
+           c->ant6 ? "IPEX" : "PCB", g6, gp, c->gpio_pol ? "alti" : "bassi", gs);
 }
 
 static bool num(const char *v, long lo, long hi, long *out)
@@ -120,10 +128,12 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     if (!strcmp(key, "auto") && num(val, 0, 1, &x)) { c->auto_tx = (uint8_t)x; return true; }
     if (!strcmp(key, "ant13") && num(val, 0, 1, &x)) { c->ant13 = (uint8_t)x; return true; }
     if (!strcmp(key, "ant6") && num(val, 0, 1, &x)) { c->ant6 = (uint8_t)x; return true; }
-    if ((!strcmp(key, "gpio13") || !strcmp(key, "gpio6") || !strcmp(key, "gpioptt")) && num(val, -1, 28, &x)) {
+    if ((!strcmp(key, "gpio13") || !strcmp(key, "gpio6") || !strcmp(key, "gpioptt") || !strcmp(key, "gpiostop")) &&
+        num(val, -1, 28, &x)) {
         if (x >= 0 && !pdx_bcn_gpio_ok((int)x)) return false;
         if (!strcmp(key, "gpio13")) c->gpio13 = (int8_t)x;
         else if (!strcmp(key, "gpio6")) c->gpio6 = (int8_t)x;
+        else if (!strcmp(key, "gpiostop")) c->gpio_stop = (int8_t)x;
         else c->gpio_ptt = (int8_t)x;
         return true;
     }
@@ -139,6 +149,29 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
 
 /* GPIO esterni consentiti: connettore 0..10 e piazzole 23/24/25 (non 13/14 USB, 26 antenna, 27 LED, 28 BOOT) */
 bool pdx_bcn_gpio_ok(int g) { return (g >= 0 && g <= 10) || g == 23 || g == 24 || g == 25; }
+
+const char *pdx_bcn_check(const pdx_bcn_cfg_t *c)
+{
+    const int8_t o[3] = {c->gpio13, c->gpio6, c->gpio_ptt};
+    if (c->gpio_stop >= 0)
+        for (int i = 0; i < 3; i++) if (o[i] == c->gpio_stop) return "gpiostop";   /* ingresso e uscita sullo stesso pin */
+    if (c->gpio13 >= 0 && (c->gpio13 == c->gpio6 || c->gpio13 == c->gpio_ptt)) return "gpio13";
+    if (c->gpio6 >= 0 && c->gpio6 == c->gpio_ptt) return "gpio6";
+    return NULL;
+}
+
+static int stop_gpio = -1;
+void pdx_bcn_stop_gpio_init(const pdx_bcn_cfg_t *c)
+{
+    stop_gpio = c->gpio_stop >= 0 && pdx_bcn_gpio_ok(c->gpio_stop) && !pdx_bcn_check(c) ? c->gpio_stop : -1;
+    if (stop_gpio >= 0) {
+        gpio_config_t g = {.pin_bit_mask = 1ULL << stop_gpio, .mode = GPIO_MODE_INPUT, .pull_up_en = GPIO_PULLUP_ENABLE};
+        gpio_config(&g);
+        esp_rom_delay_us(200);                                 /* pull-up interno: assestamento */
+    }
+    pdx_rf_set_stop_gpio(stop_gpio);
+}
+bool pdx_bcn_stop_gpio_active(void) { return stop_gpio >= 0 && gpio_get_level((gpio_num_t)stop_gpio) == 0; }
 
 static void gpio_out(int g, bool active, uint8_t pol)
 {
@@ -225,13 +258,13 @@ static bool stop_requested(TickType_t wait)
 {
     uint8_t ch;
     if (usb_serial_jtag_read_bytes(&ch, 1, wait) > 0) return true;
-    return gpio_get_level(BOOT_GPIO) == 0;
+    return gpio_get_level(BOOT_GPIO) == 0 || pdx_bcn_stop_gpio_active();
 }
 
 bool pdx_bcn_wait(unsigned s)
 {
     for (unsigned t = s; t > 0; t--) {
-        printf("BEACON parte tra %u s (un tasto sulla seriale o BOOT annulla)\n", t);
+        printf("BEACON parte tra %u s (un tasto sulla seriale, BOOT o GPIO STOP a massa annulla)\n", t);
         for (int k = 0; k < 10; k++)
             if (stop_requested(pdMS_TO_TICKS(100))) { printf("BEACON annullato: modo configurazione\n"); return false; }
     }
@@ -240,7 +273,7 @@ bool pdx_bcn_wait(unsigned s)
 
 static bool pause_with_stop(unsigned s)
 {
-    printf("BEACON pausa %u s (un tasto sulla seriale, BOOT o STOP dalla dashboard ferma il beacon)\n", s);
+    printf("BEACON pausa %u s (un tasto sulla seriale, BOOT, GPIO STOP a massa o STOP dalla dashboard ferma il beacon)\n", s);
     for (unsigned k = 0; k < s * 10u; k++)
         if (stop_requested(pdMS_TO_TICKS(100)) || pdx_web_take_stop()) return false;
     return true;
@@ -256,6 +289,7 @@ static void next_band(const pdx_bcn_cfg_t *c, int band, uint32_t cycle, int *nb,
 void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
 {
     pdx_bcn_quick_clear();
+    if (pdx_bcn_stop_gpio_active()) { printf("BEACON GPIO STOP a massa: nessuna TX\n"); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
     if (!(c->bands & (1u << b))) { int nb; uint32_t nc; next_band(c, b, cycle, &nb, &nc); pdx_bcn_request_run(nb, nc); }
     const double lvl = 20.0 * log10((double)c->amp / 480.0);
     const uint32_t fk = b == 0 ? c->f13_khz : c->f6_khz;
@@ -278,7 +312,7 @@ void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
     if (e) { printf("BEACON ERR %s\n", e); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
     printf("BEACON fine TX: frame %" PRIu32 " DUMMY %" PRIu32 " ritardo max %" PRIu32 " sforamenti %" PRIu32 "\n",
            st.frames, st.dummies, r.late_max, r.overruns);
-    if (r.stopped) { printf("BEACON fermato con BOOT\n"); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
+    if (r.stopped) { printf("BEACON fermato con BOOT o GPIO STOP\n"); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
     pdx_bcn_reboot(PDX_BCN_BOOT_PAUSE, b, cycle);
 }
 

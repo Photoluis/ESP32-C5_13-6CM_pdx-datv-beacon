@@ -373,6 +373,8 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
 #define STREAM_L_MAX 64u
 #define stream_tab shared_tab                       /* 2 * STREAM_L_MAX = 128 parole */
 static pdx_stream_res_t stream_res;
+static uint32_t stop_mask = 1u << 28;             /* ingressi che fermano la TX a livello basso: BOOT + GPIO STOP */
+void pdx_rf_set_stop_gpio(int g) { stop_mask = (1u << 28) | (g >= 0 && g < 28 ? 1u << g : 0u); }
 
 /* copia a tratti contigui: la tabella è lunga 2L (tono ripetuto due volte), quindi da qualunque k si possono copiare
  * L parole senza controllare la fine; ciclo interno srotolato x4 senza volatile */
@@ -705,7 +707,7 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
     const uint32_t per = n * 6u;                                    /* 40 MS/s = 6 cicli per campione */
     uint32_t tsw = t0 + lat + (n / 2u) * 6u;                        /* primo scambio: intervallo 0 */
     for (uint32_t j = 0; j < intervals; j++) {
-        if ((j & 255u) == 0 && !(REG_READ(GPIO_IN_REG) & (1u << 28))) { stream_res.stopped = 1; intervals = j; break; }  /* BOOT */
+        if ((j & 255u) == 0 && (~REG_READ(GPIO_IN_REG) & stop_mask)) { stream_res.stopped = 1; intervals = j; break; }  /* BOOT o GPIO STOP */
         while ((int32_t)(esp_cpu_get_cycle_count() - tsw) < 0) {}
         const uint32_t late = esp_cpu_get_cycle_count() - tsw;
         *own = (j & 1u) ? oa : ob;                                  /* j pari -> B, dispari -> A */
