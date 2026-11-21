@@ -696,7 +696,8 @@ static IRAM_ATTR __attribute__((noinline)) void stream_loop(uint32_t n, uint32_t
             const uint32_t sw = tsw + per;
             for (;;) {
                 const uint32_t ph = lv.pstage < 2u ? lv.pstage : 2u + (live_job.stage < 5u ? live_job.stage : 5u);
-                const uint32_t need = lv.st_max[ph] ? lv.st_max[ph] + 1500u : 12000u;
+                const uint32_t mx = lv.st_max[ph] < 9000u ? lv.st_max[ph] : 9000u;   /* tetto: un picco a freddo non blocca la fase */
+                const uint32_t need = mx ? mx + 1500u : 9000u;
                 if ((int32_t)(sw - esp_cpu_get_cycle_count()) < (int32_t)need) break;
                 const uint32_t s0 = esp_cpu_get_cycle_count();
                 if (!live_producer_step()) break;
