@@ -313,6 +313,9 @@ void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int b, uint32_t cycle)
     char prov[40];
     snprintf(prov, sizeof prov, "BEACON %" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
     pdx_rf_live_source(b == 0 ? 1 : 0, c->call, prov);
+    char ftxt[16];
+    snprintf(ftxt, sizeof ftxt, "%" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
+    pdx_rf_live_overlay(c->call, ftxt);                       /* monoscopio neutro: nominativo e frequenza */
     pdx_rf_set_ppm(c->ppm_x100);
     if (!pdx_rf_tune_khz(fk)) { printf("BEACON ERR frequenza %" PRIu32 " kHz\n", fk); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, b, cycle); }
     printf("BEACON PLL %" PRIu32 " kHz (quarzo %d/100 ppm)\n", pdx_rf_prog_khz(), c->ppm_x100);

@@ -661,6 +661,9 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_live(uint32_t *d, uint3
     fx.acc = acc; fx.rem = rem; fx.w = w;
 }
 
+static const uint8_t *ovl_blob[PDX_OVL_FIELDS];          /* strisce della sovrimpressione (ovl_prepare) */
+static uint32_t ovl_len[PDX_OVL_FIELDS];
+
 /* prepara memoria, codificatore e mux; produce il primo frame (senza fretta). NULL se riuscito */
 static const char *live_prepare(const uint8_t *es_file, uint32_t sr, const char *rate, const char *service,
                                 const char *provider)
@@ -674,6 +677,7 @@ static const char *live_prepare(const uint8_t *es_file, uint32_t sr, const char 
     pdx_s2l_map_init();
     e = pdx_mux_init(&live_mux, es_file, pdx_s2_ts_bitrate(&live_s2, sr), service, provider, false);
     if (e) return e;
+    pdx_mux_set_overlay(&live_mux, ovl_blob, ovl_len);           /* prima del primo IDR */
     memset(&lv, 0, sizeof(lv));
     lv.cw[0] = live_cw0;
     lv.cw[1] = live_cw1;
@@ -905,6 +909,8 @@ void pdx_rf_qpsk(uint32_t n, uint32_t hold, int amp, unsigned ms, uint32_t lat, 
 }
 
 #include "esp_partition.h"
+#include "esp_rom_crc.h"
+#include <inttypes.h>
 #include "soc/gpio_reg.h"
 
 static esp_partition_mmap_handle_t sym_mh;
@@ -966,26 +972,218 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
 }
 
 /* ---- P4b: comandi del TS continuo ---- */
-/* monoscopi PDXES001 nella partizione "symbols": 0 = 6 cm (assoluto 0x290000), 1 = 13 cm (assoluto 0x320000) */
-static const uint32_t LIVE_ES_PART_OFF[2] = {0x100000u, 0x190000u};   /* partizione symbols da 0x190000 (B2) */
-#define LIVE_ES_MAP 0x90000u                         /* 576 KB ciascuno */
+/* monoscopi nella partizione "symbols" (da 0x190000), area assoluta 0x290000..0x3F0000:
+ *   PDXES002 neutro (23/11): uno solo per le due bande, con nominativo e frequenza in sovrimpressione;
+ *   oppure i due PDXES001 di prima: 6 cm a 0x290000, 13 cm a 0x320000. */
+#define LIVE_ES_AREA_OFF 0x100000u
+#define LIVE_ES_AREA_LEN 0x160000u
+#define LIVE_ES13_OFF    0x090000u
+#define OVL_PART_OFF     0x260000u                   /* assoluto 0x3F0000: strisce composte, 0x8000 per banda */
+#define OVL_SLOT         0x8000u
+#define OVL_BUF          1600u                       /* una slice con intestazione ed emulation prevention */
+static const uint8_t *live_area;
+static esp_partition_mmap_handle_t live_area_mh;
 static const uint8_t *live_es[2];
-static esp_partition_mmap_handle_t live_es_mh[2];
 static int live_src;                                 /* monoscopio scelto per la prossima S2LIVE */
-static char live_service[24] = "IZ7PDX", live_provider[40] = "IZ7PDX BEACON C5";
-
+static char live_service[24] = "NOCALL", live_provider[40] = "BEACON C5";
+static char live_call[16] = "NOCALL", live_freq[16];  /* testi della sovrimpressione (freq vuota = dalla sintonia) */
+static const uint8_t *ovl_map;
+static esp_partition_mmap_handle_t ovl_mh;
 static const char *live_es_open(int k)
 {
     if (k < 0 || k > 1) return "monoscopio";
     if (live_es[k]) return NULL;
     const esp_partition_t *pt = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "symbols");
     if (!pt) return "partizione symbols";
-    const void *ptr;
-    if (esp_partition_mmap(pt, LIVE_ES_PART_OFF[k], LIVE_ES_MAP, ESP_PARTITION_MMAP_DATA, &ptr, &live_es_mh[k]) != ESP_OK)
-        return "mmap ES";
-    if (memcmp(ptr, "PDXES001", 8) != 0) { esp_partition_munmap(live_es_mh[k]); return "file ES assente"; }
-    live_es[k] = ptr;
+    if (!live_area) {
+        const void *ptr;
+        if (esp_partition_mmap(pt, LIVE_ES_AREA_OFF, LIVE_ES_AREA_LEN, ESP_PARTITION_MMAP_DATA, &ptr, &live_area_mh) !=
+            ESP_OK)
+            return "mmap ES";
+        live_area = ptr;
+    }
+    const uint8_t *e = !memcmp(live_area, "PDXES002", 8) ? live_area : live_area + (k ? LIVE_ES13_OFF : 0);
+    if (memcmp(e, "PDXES001", 8) && memcmp(e, "PDXES002", 8)) return "file ES assente";
+    live_es[k] = e;
     return NULL;
+}
+
+/* ---- sovrimpressione: strisce del nominativo e della frequenza composte in flash dalle slice dei caratteri ---- */
+typedef struct { uint8_t b[16]; uint32_t n; } ovl_bw_t;
+static void bw_u(ovl_bw_t *w, uint32_t bits, uint32_t v)
+{
+    while (bits--) {
+        if ((v >> bits) & 1u) w->b[w->n >> 3] |= (uint8_t)(0x80u >> (w->n & 7u));
+        w->n++;
+    }
+}
+static void bw_ue(ovl_bw_t *w, uint32_t v)
+{
+    v++;
+    const uint32_t bits = 32u - (uint32_t)__builtin_clz(v);
+    bw_u(w, bits - 1u, 0);
+    bw_u(w, bits, v);
+}
+
+typedef struct { uint8_t *b; uint32_t n, zeros; } ovl_esc_t;
+static void esc_put(ovl_esc_t *e, const uint8_t *p, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; i++) {
+        if (e->zeros >= 2 && p[i] <= 3) { e->b[e->n++] = 3; e->zeros = 0; }
+        e->b[e->n++] = p[i];
+        e->zeros = p[i] ? 0 : e->zeros + 1;
+    }
+}
+
+static const pdx_ovl_field_t *ovl_field(const pdx_ovl_header_t *o, uint32_t f)
+{
+    return (const pdx_ovl_field_t *)((const uint8_t *)o + sizeof(*o)) + f;
+}
+
+/* voce del carattere (chiave di 1 o 2 caratteri), NULL se assente */
+static const uint8_t *ovl_glyph(const pdx_ovl_header_t *o, const pdx_ovl_field_t *fd, char c0, char c1)
+{
+    const uint32_t esz = 4u + 8u * fd->rows;
+    const uint8_t *e = (const uint8_t *)o + fd->glyph_off;
+    for (uint32_t i = 0; i < fd->nglyph; i++, e += esz)
+        if (e[0] == (uint8_t)c0 && e[1] == (uint8_t)(fd->cell == 2 ? c1 : 0)) return e;
+    return NULL;
+}
+
+/* compone la striscia f per il testo dato e la scrive nella partizione da woff; lunghezza o 0 se errore */
+static uint32_t ovl_compose(const esp_partition_t *pt, uint32_t woff, const pdx_ovl_header_t *o, uint32_t f,
+                            const char *text, uint8_t *buf, uint32_t *crc)
+{
+    const pdx_ovl_field_t *fd = ovl_field(o, f);
+    char t[2 * 20 + 2];
+    uint32_t n = 0;
+    const bool call = !strncmp(fd->name, "call", 4);
+    for (const char *p = text; *p && n < sizeof t - 2; p++) {
+        char c = call && *p >= 'a' && *p <= 'z' ? (char)(*p - 32) : *p;
+        if (!ovl_glyph(o, fd, c, ' ')) c = ' ';       /* carattere non disponibile: spazio */
+        t[n++] = c;
+    }
+    const uint32_t cell = fd->cell ? fd->cell : 1u;
+    while (n % cell) t[n++] = ' ';
+    uint32_t ncell = n / cell;
+    if (ncell > o->cols) ncell = o->cols;
+    const uint32_t c0 = (o->cols - ncell) / 2u;
+    uint8_t nalh[2];
+    memcpy(nalh, (const uint8_t *)o + o->idr_off + 4, 2);
+    uint32_t total = 0;
+    for (uint32_t r = 0; r < fd->rows; r++) {
+        for (uint32_t col = 0; col < o->cols; col++) {
+            const bool in = col >= c0 && col < c0 + ncell;
+            const char a = in ? t[(col - c0) * cell] : ' ', b = in && cell == 2 ? t[(col - c0) * cell + 1] : ' ';
+            const uint8_t *g = ovl_glyph(o, fd, a, b);
+            if (!g) g = ovl_glyph(o, fd, ' ', ' ');
+            if (!g) return 0;
+            uint32_t doff;
+            uint16_t dlen;
+            memcpy(&doff, g + 4 + 8 * r, 4);
+            memcpy(&dlen, g + 8 + 8 * r, 2);
+            const uint8_t qp = g[10 + 8 * r], sao = g[11 + 8 * r];
+            ovl_bw_t w;
+            memset(&w, 0, sizeof w);
+            bw_u(&w, 1, 0);                                   /* first_slice_segment_in_pic_flag */
+            bw_u(&w, 1, 0);                                   /* no_output_of_prior_pics_flag */
+            bw_ue(&w, 0);                                     /* slice_pic_parameter_set_id */
+            bw_u(&w, o->abits, (fd->row0 + r) * o->cols + col);   /* slice_segment_address */
+            bw_ue(&w, 2);                                     /* slice_type I */
+            if (o->flags & 1u) { bw_u(&w, 1, sao & 1u); bw_u(&w, 1, (sao >> 1) & 1u); }
+            const int32_t dq = (int32_t)qp - 26 - o->init_qp_minus26;
+            bw_ue(&w, dq > 0 ? 2u * (uint32_t)dq - 1u : (uint32_t)(-2 * dq));   /* slice_qp_delta */
+            if (o->flags & 2u) bw_ue(&w, 0);                  /* num_entry_point_offsets */
+            bw_u(&w, 1, 1);                                   /* byte_alignment */
+            while (w.n & 7u) bw_u(&w, 1, 0);
+            if (4u + 2u * (2u + w.n / 8u + dlen) > OVL_BUF) return 0;
+            ovl_esc_t e = {.b = buf};
+            static const uint8_t sc[4] = {0, 0, 0, 1};
+            memcpy(buf, sc, 4);
+            e.n = 4;
+            esc_put(&e, nalh, 2);
+            esc_put(&e, w.b, w.n / 8u);
+            esc_put(&e, (const uint8_t *)o + doff, dlen);
+            if (total + e.n > OVL_SLOT - 64u) return 0;
+            if (esp_partition_write(pt, woff + total, buf, e.n) != ESP_OK) return 0;
+            *crc = esp_rom_crc32_le(*crc, buf, e.n);
+            total += e.n;
+        }
+    }
+    return total;
+}
+
+typedef struct { char magic[8]; uint32_t key, nf, len[2], crc[2]; } ovl_slot_hdr_t;
+
+/* strisce del monoscopio k per live_call / live_freq: riusa la flash se già composte, altrimenti le riscrive.
+ * Senza sovrimpressione (PDXES001) non fa nulla. */
+static const char *ovl_prepare(int k, const uint8_t *es, bool verbose)
+{
+    memset(ovl_blob, 0, sizeof ovl_blob);
+    memset(ovl_len, 0, sizeof ovl_len);
+    const pdx_ovl_header_t *o = pdx_es_overlay(es);
+    if (!o) return NULL;
+    char freq[16];
+    if (live_freq[0]) snprintf(freq, sizeof freq, "%s", live_freq);
+    else snprintf(freq, sizeof freq, "%u.%03u MHz", (unsigned)(cur_khz / 1000u), (unsigned)(cur_khz % 1000u));
+    const char *txt[PDX_OVL_FIELDS] = {live_call, freq};
+    uint32_t key = esp_rom_crc32_le(0, es, 64);
+    for (int f = 0; f < PDX_OVL_FIELDS; f++) key = esp_rom_crc32_le(key, (const uint8_t *)txt[f], strlen(txt[f]) + 1);
+    const esp_partition_t *pt = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, 0x40, "symbols");
+    if (!pt) return "partizione symbols";
+    const uint32_t slot = OVL_PART_OFF + (uint32_t)k * OVL_SLOT;
+    ovl_slot_hdr_t h;
+    if (esp_partition_read(pt, slot, &h, sizeof h) != ESP_OK) return "lettura strisce";
+    const bool same = !memcmp(h.magic, "PDXBLB01", 8) && h.key == key && h.nf == o->nfields;
+    if (!same) {
+        if (ovl_map) { esp_partition_munmap(ovl_mh); ovl_map = NULL; }   /* niente dati vecchi in cache */
+        uint8_t *buf = heap_caps_malloc(OVL_BUF, MALLOC_CAP_8BIT);
+        if (!buf) return "memoria strisce";
+        if (esp_partition_erase_range(pt, slot, OVL_SLOT) != ESP_OK) { free(buf); return "cancellazione strisce"; }
+        memset(&h, 0, sizeof h);
+        uint32_t off = 64;
+        for (uint32_t f = 0; f < o->nfields && f < PDX_OVL_FIELDS; f++) {
+            h.crc[f] = 0;
+            h.len[f] = ovl_compose(pt, slot + off, o, f, txt[f], buf, &h.crc[f]);
+            if (!h.len[f]) { free(buf); return "composizione strisce"; }
+            off += (h.len[f] + 3u) & ~3u;
+        }
+        free(buf);
+        memcpy(h.magic, "PDXBLB01", 8);
+        h.key = key;
+        h.nf = o->nfields;
+        if (esp_partition_write(pt, slot, &h, sizeof h) != ESP_OK) return "scrittura strisce";
+    }
+    if (!ovl_map) {
+        const void *ptr;
+        if (esp_partition_mmap(pt, OVL_PART_OFF, 2u * OVL_SLOT, ESP_PARTITION_MMAP_DATA, &ptr, &ovl_mh) != ESP_OK)
+            return "mmap strisce";
+        ovl_map = ptr;
+    }
+    uint32_t off = 64;
+    for (uint32_t f = 0; f < o->nfields && f < PDX_OVL_FIELDS; f++) {
+        ovl_blob[f] = ovl_map + (uint32_t)k * OVL_SLOT + off;
+        ovl_len[f] = h.len[f];
+        off += (h.len[f] + 3u) & ~3u;
+        if (verbose) printf("OVL striscia %s \"%s\": %" PRIu32 " byte CRC32 %08" PRIx32 "%s\n", ovl_field(o, f)->name,
+                            txt[f], h.len[f], h.crc[f], same ? " (gia' in flash)" : " (scritta)");
+    }
+    return NULL;
+}
+
+void pdx_rf_live_overlay(const char *call, const char *freq)
+{
+    snprintf(live_call, sizeof live_call, "%s", call ? call : "");
+    snprintf(live_freq, sizeof live_freq, "%s", freq ? freq : "");
+}
+
+const char *pdx_rf_ovl_test(int k, const char *call, const char *freq)
+{
+    pdx_rf_live_overlay(call, freq);
+    const char *e = live_es_open(k);
+    if (e) return e;
+    if (!pdx_es_overlay(live_es[k])) return "monoscopio senza sovrimpressione (PDXES001)";
+    return ovl_prepare(k, live_es[k], true);
 }
 
 void pdx_rf_live_source(int es, const char *service, const char *provider)
@@ -1017,6 +1215,8 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     *r = (pdx_stream_res_t){0};
     if (sr < 100000u || sr > 1000000u) return "SR";
     const char *e = live_es_open(live_src);
+    if (e) return e;
+    e = ovl_prepare(live_src, live_es[live_src], true);          /* flash scritta solo se il testo è cambiato */
     if (e) return e;
     e = live_prepare(live_es[live_src], sr, "3/4", live_service, live_provider);
     if (e) return e;

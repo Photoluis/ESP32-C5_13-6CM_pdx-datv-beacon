@@ -9,10 +9,36 @@
 #define PDX_ES_OFFSET 0x600000u          /* file PDXES001 nella partizione "symbols" */
 
 typedef struct {
-    char magic[8];
+    char magic[8];                       /* "PDXES001" o "PDXES002" (con la sezione di sovrimpressione) */
     uint32_t nunits, loop_ticks, vtype, atype, data_off;
-    char label[36];
+    uint32_t ovl_off;                    /* PDXES002: offset della sezione "PDXOVL01" (PDXES001: inizio dell'etichetta) */
+    char label[32];
 } pdx_es_header_t;
+
+/* C5: sezione di sovrimpressione (tools/monoscope/make_es_c5.py), tutti gli offset relativi al suo inizio */
+typedef struct {
+    char magic[8];                       /* "PDXOVL01" */
+    uint32_t nfields, nidr, idr_off;
+    uint8_t cols, abits, flags, rsv;     /* flags: bit0 SAO attivo, bit1 entry point (WPP) nell'intestazione */
+    int8_t init_qp_minus26;
+    uint8_t rsv2[3];
+} pdx_ovl_header_t;
+
+typedef struct {
+    uint8_t row0, rows, cell, rsv;       /* prima riga di CTU, righe, caratteri per cella */
+    uint16_t nglyph, rsv2;
+    uint32_t glyph_off;                  /* voci: 2 byte di chiave, 2 di riserva, per riga {off u32, len u16, qp, sao} */
+    char name[8];
+    uint8_t rsv3[4];
+} pdx_ovl_field_t;
+
+#define PDX_OVL_FIELDS 2
+#define PDX_SEG_MAX (2 * PDX_OVL_FIELDS + 1)
+
+typedef struct {
+    const uint8_t *p;
+    uint32_t n;
+} pdx_seg_t;
 
 typedef struct {
     uint8_t kind, rsv[3];                /* 0 video, 1 audio */
@@ -28,7 +54,8 @@ typedef struct {
     /* PES in corso */
     uint8_t ph[14];
     uint32_t ph_len, ph_pos;
-    const uint8_t *pl;
+    pdx_seg_t seg[PDX_SEG_MAX];          /* dati del PES a pezzi (IDR con le strisce sostituite) */
+    uint8_t nseg, iseg;
     uint32_t pl_rem;
     bool active;
 } pdx_es_cursor_t;
@@ -62,6 +89,11 @@ typedef struct {
     const pdx_es_header_t *es;
     pdx_es_cursor_t v, a;
     uint32_t late;                       /* PES iniziati dopo il loro tempo di decodifica */
+    /* sovrimpressione (C5): strisce composte in flash da pdx_mux_set_overlay, inserite negli IDR */
+    const pdx_ovl_header_t *ovl;
+    const uint8_t *ovl_blob[PDX_OVL_FIELDS];
+    uint32_t ovl_blob_len[PDX_OVL_FIELDS];
+    uint32_t ovl_idr;                    /* IDR inseriti */
     uint32_t stats_null, stats_video, stats_audio;
 } pdx_mux_t;
 
@@ -74,3 +106,7 @@ bool pdx_mux_vq_space(const pdx_mux_t *m);              /* c'è posto per un fot
 pdx_vq_entry_t *pdx_mux_vq_slot(pdx_mux_t *m);          /* posto libero: il chiamante riempie buf, len, pts */
 void pdx_mux_vq_commit(pdx_mux_t *m);                   /* mette in coda il fotogramma del posto libero */
 void pdx_mux_next(pdx_mux_t *m, uint8_t pkt[188]);      /* prossimo pacchetto da 188 byte */
+/* sezione di sovrimpressione del file ES (NULL se PDXES001 o assente) */
+const pdx_ovl_header_t *pdx_es_overlay(const uint8_t *es_file);
+/* strisce già composte (una per campo, NAL Annex B): da qui gli IDR del file escono con il testo; blob[i] NULL = vuota */
+void pdx_mux_set_overlay(pdx_mux_t *m, const uint8_t *const blob[], const uint32_t len[]);

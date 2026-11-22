@@ -161,16 +161,72 @@ static void start_pes_raw(pdx_mux_t *m, pdx_es_cursor_t *c, uint64_t pts_abs, co
     h[13] = (uint8_t)(0x01 | ((pts << 1) & 0xFE));
     c->ph_len = 14;
     c->ph_pos = 0;
-    c->pl = data;
+    c->seg[0] = (pdx_seg_t){data, len};
+    c->nseg = 1;
+    c->iseg = 0;
     c->pl_rem = len;
     c->active = true;
     if (pts_abs < now_90k(m)) m->late++;
 }
 
+/* voce IDR della sovrimpressione per l'unità ui (NULL se non è un IDR con strisce) */
+static const uint8_t *ovl_idr_entry(const pdx_mux_t *m, uint32_t ui)
+{
+    const pdx_ovl_header_t *o = m->ovl;
+    const uint32_t esz = 8u + 8u * o->nfields;
+    const uint8_t *t = (const uint8_t *)o + o->idr_off;
+    for (uint32_t i = 0; i < o->nidr; i++, t += esz) {
+        uint32_t idx;
+        memcpy(&idx, t, 4);
+        if (idx == ui) return t;
+        if (idx > ui) break;                               /* tabella in ordine di unità */
+    }
+    return NULL;
+}
+
 static void start_pes(pdx_mux_t *m, pdx_es_cursor_t *c, const pdx_es_unit_t *u, bool video)
 {
-    start_pes_raw(m, c, unit_pts(m, c, u), c->data + m->es->data_off + u->off, u->len, video);
+    const uint8_t *base = c->data + m->es->data_off + u->off;
+    start_pes_raw(m, c, unit_pts(m, c, u), base, u->len, video);
+    const uint8_t *e = (video && m->ovl) ? ovl_idr_entry(m, (uint32_t)(u - c->units)) : NULL;
+    if (e) {                                               /* IDR: [prima] striscia [tra] striscia [dopo] */
+        uint32_t pos = 0, total = 0, ns = 0;
+        for (uint32_t f = 0; f < m->ovl->nfields && f < PDX_OVL_FIELDS; f++) {
+            uint32_t s, n;
+            memcpy(&s, e + 8 + 8 * f, 4);
+            memcpy(&n, e + 12 + 8 * f, 4);
+            if (!m->ovl_blob[f] || s < pos || s + n > u->len) continue;   /* striscia non composta: resta vuota */
+            c->seg[ns++] = (pdx_seg_t){base + pos, s - pos};
+            c->seg[ns++] = (pdx_seg_t){m->ovl_blob[f], m->ovl_blob_len[f]};
+            total += (s - pos) + m->ovl_blob_len[f];
+            pos = s + n;
+        }
+        if (ns) {
+            c->seg[ns++] = (pdx_seg_t){base + pos, u->len - pos};
+            total += u->len - pos;
+            c->nseg = (uint8_t)ns;
+            c->pl_rem = total;
+            m->ovl_idr++;
+        }
+    }
     c->next++;
+}
+
+const pdx_ovl_header_t *pdx_es_overlay(const uint8_t *es_file)
+{
+    const pdx_es_header_t *h = (const pdx_es_header_t *)es_file;
+    if (memcmp(h->magic, "PDXES002", 8) || !h->ovl_off) return NULL;
+    const pdx_ovl_header_t *o = (const pdx_ovl_header_t *)(es_file + h->ovl_off);
+    return memcmp(o->magic, "PDXOVL01", 8) ? NULL : o;
+}
+
+void pdx_mux_set_overlay(pdx_mux_t *m, const uint8_t *const blob[], const uint32_t len[])
+{
+    m->ovl = pdx_es_overlay((const uint8_t *)m->es);
+    for (int f = 0; f < PDX_OVL_FIELDS; f++) {
+        m->ovl_blob[f] = m->ovl ? blob[f] : NULL;
+        m->ovl_blob_len[f] = m->ovl ? len[f] : 0;
+    }
 }
 
 static void pes_packet(pdx_mux_t *m, pdx_es_cursor_t *c, uint16_t pid, uint8_t *cc, uint8_t *p)
@@ -188,10 +244,21 @@ static void pes_packet(pdx_mux_t *m, pdx_es_cursor_t *c, uint16_t pid, uint8_t *
         k = 5 + af;
     }
     while (k < 188 && c->ph_pos < c->ph_len) p[k++] = c->ph[c->ph_pos++];
-    const uint32_t n = 188 - k;
-    memcpy(p + k, c->pl, n);
-    c->pl += n;
+    uint32_t n = 188 - k;
     c->pl_rem -= n;
+    while (n) {                                            /* dati a pezzi */
+        pdx_seg_t *s = &c->seg[c->iseg];
+        const uint32_t t = s->n < n ? s->n : n;
+        memcpy(p + k, s->p, t);
+        s->p += t;
+        s->n -= t;
+        k += t;
+        n -= t;
+        if (!s->n) {
+            if (c->iseg + 1 >= c->nseg) break;
+            c->iseg++;
+        }
+    }
     if (c->pl_rem == 0) c->active = false;
 }
 
@@ -260,7 +327,7 @@ const char *pdx_mux_init(pdx_mux_t *m, const uint8_t *es_file, double rate, cons
 {
     memset(m, 0, sizeof(*m));
     const pdx_es_header_t *h = (const pdx_es_header_t *)es_file;
-    if (memcmp(h->magic, "PDXES001", 8)) return "nessun file ES";
+    if (memcmp(h->magic, "PDXES001", 8) && memcmp(h->magic, "PDXES002", 8)) return "nessun file ES";
     if (!h->nunits || !h->loop_ticks) return "file ES vuoto";
     m->es = h;
     m->rate = rate;

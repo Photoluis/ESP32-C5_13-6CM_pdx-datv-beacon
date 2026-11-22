@@ -72,6 +72,10 @@ void pdx_rf_live_stats(pdx_live_stats_t *st);
 void pdx_rf_set_stop_gpio(int g);
 /* monoscopio (0 = 6 cm, 1 = 13 cm) e nomi della SDT per le prossime S2LIVE */
 void pdx_rf_live_source(int es, const char *service, const char *provider);
+/* testi della sovrimpressione del monoscopio neutro (PDXES002): nominativo e frequenza ("" = dalla sintonia) */
+void pdx_rf_live_overlay(const char *call, const char *freq);
+/* prova senza TX: compone in flash le strisce del monoscopio k e stampa lunghezze e CRC32 */
+const char *pdx_rf_ovl_test(int k, const char *call, const char *freq);
 uint32_t pdx_rf_oneshot_cycles(uint32_t ctrlval, uint32_t max_cycles, uint32_t *ctrl_end);
 void pdx_rf_pp_init(void);   /* crea il task con lo stack statico nel banco 0 */
 void pdx_rf_pp(unsigned mode, unsigned ms, unsigned period_us, unsigned alloc, pdx_pp_res_t *r);

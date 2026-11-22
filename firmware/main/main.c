@@ -32,7 +32,7 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B2e-PPM"
+#define FW_VERSION "C5-B3-OVL"
 
 static bool tx_armed;
 
@@ -210,6 +210,15 @@ void app_main(void)
                    " sforamenti %" PRIu32 "\nOK stream\n", r.intervals, r.fill_max, (n & ~1u) * 6u, r.late_max, r.overruns);
         }
         else if (!strcmp(cmd, "WEBTEST")) { pdx_web_selftest(); printf("OK webtest\n"); }
+        else if (!strcmp(cmd, "OVLTEST")) {
+            /* OVLTEST <banda 0=6cm 1=13cm> <nominativo> <MHz>: compone in flash le strisce del monoscopio, nessuna TX */
+            unsigned kb = 0;
+            char call[16] = {0}, mhz[12] = {0}, ftxt[20];
+            if (sscanf(p, "%*s %u %15s %11s", &kb, call, mhz) != 3) { printf("ERR uso: OVLTEST <0|1> <call> <MHz>\n"); continue; }
+            snprintf(ftxt, sizeof ftxt, "%s MHz", mhz);
+            const char *oe = pdx_rf_ovl_test((int)kb, call, ftxt);
+            if (oe) printf("ERR ovltest: %s\n", oe); else printf("OK ovltest\n");
+        }
         else if (!strcmp(cmd, "LAB")) pdx_bcn_reboot(PDX_BCN_BOOT_LAB, 0, 1);
         else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
         else if (!strcmp(cmd, "SET")) {
