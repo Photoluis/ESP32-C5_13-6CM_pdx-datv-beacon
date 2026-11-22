@@ -83,4 +83,4 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 ## ライセンスとクレジット
 
 GPL-3.0 — [LICENSE](LICENSE) を参照。© 2026 Luigi D'Arcangelo, IZ7PDX.
-[ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon) の DVB-S2 エンコーダと TS コードを基にしています。Claude(Anthropic)の支援を受けて開発しました。
+[ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon) の DVB-S2 エンコーダと TS コードを基にしています。

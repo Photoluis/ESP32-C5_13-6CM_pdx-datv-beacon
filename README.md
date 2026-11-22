@@ -83,4 +83,4 @@ This is an **amateur-radio** project. Transmitting on 13 cm and 6 cm requires an
 ## Licence and credits
 
 GPL-3.0 — see [LICENSE](LICENSE). © 2026 Luigi D'Arcangelo, IZ7PDX.
-Built on the DVB-S2 encoder and transport-stream code of the [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon). Developed with the help of Claude (Anthropic).
+Built on the DVB-S2 encoder and transport-stream code of the [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).

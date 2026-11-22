@@ -83,4 +83,4 @@ Prossimi passi:
 ## Licenza e crediti
 
 GPL-3.0 — vedi [LICENSE](LICENSE). © 2026 Luigi D'Arcangelo, IZ7PDX.
-Basato sul codificatore DVB-S2 e sul transport stream dell'[ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon). Sviluppato con l'aiuto di Claude (Anthropic).
+Basato sul codificatore DVB-S2 e sul transport stream dell'[ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).
