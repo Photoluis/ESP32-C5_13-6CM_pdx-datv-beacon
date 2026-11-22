@@ -2,7 +2,7 @@
 con un carattere sulla seriale all'inizio della pausa numero N (le pause sono gli unici momenti in cui la C5 legge la
 seriale). Durante la TX la seriale tace: interrupt mascherati.
 
-Uso: python beacon_cycle.py COM10 2 [timeout_s]
+Uso: python beacon_cycle.py COMx 2 [timeout_s]
 """
 import sys
 import time

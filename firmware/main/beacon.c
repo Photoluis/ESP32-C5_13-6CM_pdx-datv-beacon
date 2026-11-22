@@ -32,7 +32,7 @@ void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
 {
     memset(c, 0, sizeof(*c));
     c->ver = CFG_VER;
-    snprintf(c->call, sizeof c->call, "IZ7PDX");
+    snprintf(c->call, sizeof c->call, "NOCALL");      /* neutro: il nominativo si imposta dalla dashboard */
     c->f13_khz = 2375000u;
     c->f6_khz = 5750000u;
     c->sr = 333000u;

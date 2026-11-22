@@ -1,7 +1,7 @@
 """ESP32-C5 Dual-Band DATV (IZ7PDX, GPL-3.0) - aspetta che la porta ricompaia (ricollegamento / riaccensione della
 scheda), registra le righe con l'ora e, se richiesto, ferma il beacon con un carattere alla prima pausa.
 
-Uso: python boot_watch.py COM10 <secondi> [stop_alla_pausa 0/1]
+Uso: python boot_watch.py COMx <secondi> [stop_alla_pausa 0/1]
 """
 import sys
 import time

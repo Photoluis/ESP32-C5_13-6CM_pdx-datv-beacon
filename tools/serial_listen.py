@@ -1,6 +1,6 @@
 """ESP32-C5 Dual-Band DATV (IZ7PDX, GPL-3.0) - ascolta la seriale per N secondi senza inviare nulla (diagnosi).
 
-Uso: python serial_listen.py COM10 8
+Uso: python serial_listen.py COMx 8
 """
 import sys
 import time

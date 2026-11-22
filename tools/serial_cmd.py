@@ -1,7 +1,7 @@
 """ESP32-C5 Dual-Band DATV (IZ7PDX, GPL-3.0) - invia comandi al firmware di prova e stampa le risposte.
 
-Uso: python serial_cmd.py COM10 10 "INFO" ["RXCAP 4096" ...]
-     python serial_cmd.py COM10 30 --dump out.txt "RXCAP 16380" "RXDUMP 16380"   (righe "D ..." salvate nel file)
+Uso: python serial_cmd.py COMx 10 "INFO" ["RXCAP 4096" ...]
+     python serial_cmd.py COMx 30 --dump out.txt "RXCAP 16380" "RXDUMP 16380"   (righe "D ..." salvate nel file)
 Il firmware P2b non ha comandi che trasmettono.
 """
 import sys
