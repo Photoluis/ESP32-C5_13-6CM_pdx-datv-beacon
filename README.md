@@ -2,13 +2,15 @@
 
 **A dual-band DVB-S2 DATV beacon (13 cm and 6 cm) on a single ESP32-C5, using the Wi-Fi transmitter as an I/Q modulator.**
 
-[Italiano](README_it.md) · [日本語](README_ja.md) · Dashboard in 11 languages · License GPL-3.0
+**English** · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · [日本語](README_ja.md)
+
+Dashboard in 11 languages · License GPL-3.0
 
 | 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
 |---|---|
 | ![DVB-S2 at 2375 MHz received with LOCK, MER 20.9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 at 5750 MHz received with LOCK, MER 20.8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
 
-*Both bands received by a Pluto + leandvb station: QPSK 3/4, 333 kS, H.265 + AAC test card, MER ~21 dB, VBER 0.*
+*Both bands received by the Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, H.265 + AAC test card, MER ~21 dB, VBER 0.*
 
 ## What it does
 

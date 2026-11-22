@@ -2,13 +2,15 @@
 
 **1 個の ESP32-C5 で動くデュアルバンド(13 cm / 6 cm)DVB-S2 DATV ビーコン。Wi-Fi 送信機を I/Q 変調器として使います。**
 
-[English](README.md) · [Italiano](README_it.md) · ダッシュボードは 11 言語 · ライセンス GPL-3.0
+[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · **日本語**
+
+ダッシュボードは 11 言語 · ライセンス GPL-3.0
 
 | 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
 |---|---|
 | ![2375 MHz の DVB-S2 をロック受信、MER 20.9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![5750 MHz の DVB-S2 をロック受信、MER 20.8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
 
-*Pluto + leandvb の局で両バンドを受信: QPSK 3/4、333 kS、H.265 + AAC テストカード、MER 約 21 dB、VBER 0。*
+*Pd4Pdx(Pluto + leandvb)で両バンドを受信: QPSK 3/4、333 kS、H.265 + AAC テストカード、MER 約 21 dB、VBER 0。*
 
 ## 機能
 
