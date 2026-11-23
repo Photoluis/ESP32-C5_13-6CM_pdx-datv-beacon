@@ -757,6 +757,18 @@ static uint32_t qsps = 15;          /* fasi del filtro = campioni calcolati per 
 static struct { uint32_t p, hi, hq, lfsr, hold; } qg;
 static int stream_kind;                     /* 0 = tono, 1 = QPSK */
 
+/* fasi del filtro per sr: prima con hold >= 8, poi con hold >= 2; resto < 1 parola a 40 MS/s per simbolo.
+ * 333 kS -> 15 x 8 (+40000), 250 kS -> 16 x 10, 125 kS -> 16 x 20, 500 kS -> 10 x 8, 66 kS -> 6 x 101 (+4000). 0 = nessuna */
+static uint32_t pick_sps(uint32_t sr, uint32_t *hold)
+{
+    for (int minh = 8; minh >= 2; minh -= 6)
+        for (uint32_t q = 16; q >= 6; q--) {
+            const uint32_t h = 40000000u / (q * sr);
+            if (h >= (uint32_t)minh && 40000000u - q * h * sr < sr) { *hold = h; return q; }
+        }
+    return 0;
+}
+
 static float rrc_f(float t, float b)
 {
     const float pi = 3.14159265f;
@@ -973,13 +985,22 @@ static IRAM_ATTR __attribute__((noinline)) void qpsk_gen_live(uint32_t *d, uint3
             hq = ((hq << 1) | ((((~s) >> 1) ^ qx) & 1u)) & 255u;
         }
         const uint32_t room = (uint32_t)(end - d);
-        if (c == 8 && room >= 8) {
+        if (c == 8 && room >= 8) {                     /* 333 kS (15 x 8), 500 kS (10 x 8) */
             d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
             d += 8;
+        } else if (c == 10 && room >= 10) {            /* 250 kS (16 x 10) */
+            d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w; d[8] = w; d[9] = w;
+            d += 10;
+        } else if (c <= room) {                        /* 125 kS e sotto: hold >= 20, copia a blocchi di 8 */
+            uint32_t k = c;
+            while (k >= 8u) {
+                d[0] = w; d[1] = w; d[2] = w; d[3] = w; d[4] = w; d[5] = w; d[6] = w; d[7] = w;
+                d += 8; k -= 8u;
+            }
+            while (k) { *d++ = w; k--; }
         } else {
-            const uint32_t k = c < room ? c : room;
-            for (uint32_t i = 0; i < k; i++) *d++ = w;
-            rem = c - k;
+            for (uint32_t i = 0; i < room; i++) *d++ = w;
+            rem = c - room;
         }
     }
     qg.p = p; qg.hi = hi; qg.hq = hq;
@@ -1290,10 +1311,10 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
     sym_data = base + 64;                        /* simboli dopo l'intestazione */
     sym_n = n / 4u * 4u;
     sym_qinv = qinv ? 1u : 0u;
-    const uint32_t tot = 40000000u / sr;                     /* parole intere a 40 MS/s per simbolo */
-    if (sr < 50000u || sr > 2000000u) { sym_data = base; return; }
-    qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
-    const uint32_t hold = tot / qsps;
+    if (sr < 25000u || sr > 2000000u) { sym_data = base; return; }
+    uint32_t hold;
+    qsps = pick_sps(sr, &hold);
+    if (!qsps) { qsps = 15; sym_data = base; return; }
     fx.sr = sr;
     fx.fr = 40000000u - qsps * hold * sr;                    /* resto per simbolo (333 kS: 40000) */
     fx.acc = 0; fx.rem = 0; fx.w = 0;
@@ -1554,16 +1575,18 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     if (ms > PDX_S2_MS_MAX) ms = PDX_S2_MS_MAX;
     if (amp > PDX_DAC_AMP_MAX) amp = PDX_DAC_AMP_MAX;
     *r = (pdx_stream_res_t){0};
-    if (sr < 100000u || sr > 1000000u) return "SR";
+    if (sr < 25000u || sr > 1000000u) return "SR";
     const char *e = live_es_open(live_src);
     if (e) return e;
     e = ovl_prepare(live_src, live_es[live_src], true);          /* flash scritta solo se il testo è cambiato */
     if (e) return e;
     e = live_prepare(live_es[live_src], sr, "3/4", live_service, live_provider);
     if (e) return e;
-    const uint32_t tot = 40000000u / sr;
-    qsps = (tot % 16u == 0) ? 16u : (tot % 15u == 0) ? 15u : 8u;
-    const uint32_t hold = tot / qsps;
+    uint32_t hold;
+    qsps = pick_sps(sr, &hold);
+    if (!qsps) { qsps = 15; return "SR non realizzabile"; }
+    printf("S2 SR %" PRIu32 ": %" PRIu32 " fasi x %" PRIu32 " parole (+%" PRIu32 "/%" PRIu32 ")\n", sr, qsps, hold,
+           40000000u - qsps * hold * sr, sr);
     fx.sr = sr;
     fx.fr = 40000000u - qsps * hold * sr;
     fx.acc = 0; fx.rem = 0; fx.w = 0;
