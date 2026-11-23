@@ -274,6 +274,14 @@ void app_main(void)
             vTaskDelay(pdMS_TO_TICKS(50));
             pdx_stream_res_t r;
             const int s2band = pdx_rf_mhz() > 4000u ? 1 : 0;   /* 23/11: antenna, GPIO e PTT della banda come la CW */
+            {                                                    /* monoscopio, nominativo e frequenza come il beacon */
+                const uint32_t fk = s2band ? bcfg.f6_khz : bcfg.f13_khz;
+                char prov[40], ftxt[16];
+                snprintf(prov, sizeof prov, "BEACON %" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
+                snprintf(ftxt, sizeof ftxt, "%" PRIu32 ".%03" PRIu32 " MHz", fk / 1000u, fk % 1000u);
+                pdx_rf_live_source(s2band ? 0 : 1, bcfg.call, prov);
+                pdx_rf_live_overlay(bcfg.call, ftxt);
+            }
             if (!dry) pdx_bcn_route(&bcfg, s2band, true);
             const char *e = pdx_rf_s2live(sr, amp, ms, lat, qinv, dry, &r);
             if (!dry) pdx_bcn_route(&bcfg, s2band, false);
