@@ -2,9 +2,9 @@
 
 **A dual-band DVB-S2 DATV beacon (13 cm and 6 cm) on a single ESP32-C5, using the Wi-Fi transmitter as an I/Q modulator.**
 
-**English** · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · [日本語](README_ja.md)
+**English** · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · [日本語](README_ja.md) · [Русский](README_ru.md)
 
-Dashboard in 11 languages · License GPL-3.0
+Dashboard in 12 languages · License GPL-3.0
 
 <table><tr><th width="50%">13 cm — 2375.000 MHz</th><th width="50%">6 cm — 5750.000 MHz</th></tr>
 <tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 at 2375 MHz with the callsign and frequency overlaid, LOCK, MER 23.4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 at 5750 MHz with the callsign and frequency overlaid, LOCK, MER 22.8 dB"></td></tr></table>
@@ -17,17 +17,19 @@ Dashboard in 11 languages · License GPL-3.0
 
 ## What it does
 
-* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **125 / 250 / 333 / 500 kS**, with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
+* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **333 kS** (125 / 250 / 500 kS in development), with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
 * Transmits alternately on **13 cm (2300–2450 MHz)** and **6 cm (5650–5850 MHz)** in a beacon cycle: TX 13 cm → pause → TX 6 cm → pause.
 * Runs on a **Waveshare ESP32-C5-Zero** (ESP32-C5, single RISC-V core, 4 MB flash, no PSRAM). No external DAC, no FPGA.
-* **Web dashboard** on its own access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 11 languages: callsign, frequencies, symbol rate, level, antenna per band (PCB or IPEX), GPIOs for external relays / PTT, cycle timing, **crystal correction in ppm** with a calculator.
+* **Web dashboard** on its own access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 languages: callsign, frequencies, symbol rate, level, antenna per band (PCB or IPEX), GPIOs for external relays / PTT, cycle timing, **crystal correction in ppm** with a calculator.
 * **Stop without buttons:** double power-up, a **STOP GPIO** to ground (switch, relay, remote control), or STOP from the dashboard.
+* **CW carrier and Morse beacon** from the dashboard (**CW START**) or from the serial port (`CW ON`, `CW MORSE`), with the band's frequency, antenna, GPIOs and PTT; it stops at the maximum duration, with BOOT or with the STOP GPIO.
+* **Crystal thermal compensation:** warming up from cold, the crystal drifts by up to −8 kHz on 6 cm. In CW / Morse the PLL follows the chip temperature every second (measured: from 8.6 kHz to 1.6 kHz peak-to-peak over 5 minutes); in DVB-S2 the PLL cannot change during a segment, so each segment starts already centred on the predicted drift (maximum error halved). On / off and reference temperature from the dashboard.
 
 | Dashboard (phone) | | |
 |---|---|---|
 | ![English](docs/img/dashboard_en.png) | ![Italiano](docs/img/dashboard_it.png) | ![日本語](docs/img/dashboard_ja.png) |
 
-All languages: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [AR](docs/img/dashboard_ar.png) — full page: [EN](docs/img/dashboard_full_en.png) · [IT](docs/img/dashboard_full_it.png) · [JA](docs/img/dashboard_full_ja.png)
+All languages: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [AR](docs/img/dashboard_ar.png) · [RU](docs/img/dashboard_ru.png) — full page: [EN](docs/img/dashboard_full_en.png) · [IT](docs/img/dashboard_full_it.png) · [JA](docs/img/dashboard_full_ja.png)
 
 ## How it works (short)
 
@@ -93,8 +95,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 First project phase completed (November 2026). Tested on air: DVB-S2 on 13 and 6 cm, live transport stream, beacon cycle, dashboard, STOP GPIO, crystal correction.
 
+23 November 2026: CW / Morse from the dashboard and crystal thermal compensation, also tested on air.
+
 Next steps:
-* temperature compensation of the crystal drift during TX (~1.6 ppm/min from cold);
+* symbol rates other than 333 kS (125 / 250 / 500 kS and below 125 kS);
 * 1000 kS symbol rate;
 * SPI link to an ESP32-S3 (dashboard during TX, cross-band transponder, streaming from a phone).
 

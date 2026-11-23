@@ -2,9 +2,9 @@
 
 **DVB-S2-DATV-Bake für zwei Bänder (13 cm und 6 cm) auf einem einzigen ESP32-C5, der den WLAN-Sender als I/Q-Modulator nutzt.**
 
-[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · **Deutsch** · [Português](README_pt.md) · [العربية](README_ar.md) · [日本語](README_ja.md)
+[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · **Deutsch** · [Português](README_pt.md) · [العربية](README_ar.md) · [日本語](README_ja.md) · [Русский](README_ru.md)
 
-Dashboard in 11 Sprachen · Lizenz GPL-3.0
+Dashboard in 12 Sprachen · Lizenz GPL-3.0
 
 <table><tr><th width="50%">13 cm — 2375,000 MHz</th><th width="50%">6 cm — 5750,000 MHz</th></tr>
 <tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 23,4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB"></td></tr></table>
@@ -17,17 +17,19 @@ Dashboard in 11 Sprachen · Lizenz GPL-3.0
 
 ## Was sie kann
 
-* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **125 / 250 / 333 / 500 kS**; der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
+* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **333 kS** (125 / 250 / 500 kS in Entwicklung); der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
 * Sendet im Bakenzyklus abwechselnd auf **13 cm (2300–2450 MHz)** und **6 cm (5650–5850 MHz)**: TX 13 cm → Pause → TX 6 cm → Pause.
 * Läuft auf einem **Waveshare ESP32-C5-Zero** (ESP32-C5, ein RISC-V-Kern, 4 MB Flash, kein PSRAM). Kein externer DAC, kein FPGA.
-* **Web-Dashboard** über einen eigenen Access Point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 11 Sprachen: Rufzeichen, Frequenzen, Symbolrate, Pegel, Antenne pro Band (PCB oder IPEX), GPIOs für externe Relais / PTT, Zykluszeiten, **Quarzkorrektur in ppm** mit Rechner.
+* **Web-Dashboard** über einen eigenen Access Point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 Sprachen: Rufzeichen, Frequenzen, Symbolrate, Pegel, Antenne pro Band (PCB oder IPEX), GPIOs für externe Relais / PTT, Zykluszeiten, **Quarzkorrektur in ppm** mit Rechner.
 * **Stopp ohne Tasten:** doppeltes Einschalten, ein **STOP-GPIO** gegen Masse (Schalter, Relais, Fernsteuerung) oder STOP im Dashboard.
+* **CW-Träger und Morsebake** aus dem Dashboard (**CW START**) oder über die serielle Schnittstelle (`CW ON`, `CW MORSE`), mit Frequenz, Antenne, GPIOs und PTT des Bandes; Stopp nach der Höchstdauer, mit BOOT oder dem STOP-GPIO.
+* **Thermische Quarzkompensation:** beim Erwärmen aus dem kalten Zustand driftet der Quarz auf 6 cm um bis zu −8 kHz. Bei CW / Morse folgt die PLL jede Sekunde der Chiptemperatur (gemessen: von 8,6 kHz auf 1,6 kHz Spitze-Spitze in 5 Minuten); bei DVB-S2 kann sich die PLL während eines Segments nicht ändern, daher beginnt jedes Segment bereits auf die erwartete Drift zentriert (maximaler Fehler halbiert). Ein/Aus und Bezugstemperatur im Dashboard.
 
 | Dashboard (Smartphone) | | |
 |---|---|---|
 | ![Deutsch](docs/img/dashboard_de.png) | ![English](docs/img/dashboard_en.png) | ![Italiano](docs/img/dashboard_it.png) |
 
-Alle Sprachen: [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [JA](docs/img/dashboard_ja.png) · [AR](docs/img/dashboard_ar.png)
+Alle Sprachen: [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [JA](docs/img/dashboard_ja.png) · [AR](docs/img/dashboard_ar.png) · [RU](docs/img/dashboard_ru.png)
 
 ## Funktionsweise (kurz)
 
@@ -93,8 +95,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 Erste Projektphase abgeschlossen (November 2026). Auf Sendung getestet: DVB-S2 auf 13 und 6 cm, Transportstrom in Echtzeit, Bakenzyklus, Dashboard, STOP-GPIO, Quarzkorrektur.
 
+23. November 2026: CW / Morse aus dem Dashboard und thermische Quarzkompensation, auch on air erprobt.
+
 Nächste Schritte:
-* Temperaturkompensation der Quarzdrift während der Sendung (~1,6 ppm/min aus dem kalten Zustand);
+* andere Symbolraten als 333 kS (125 / 250 / 500 kS und unter 125 kS);
 * Symbolrate 1000 kS;
 * SPI-Verbindung zu einem ESP32-S3 (Dashboard während der Sendung, Crossband-Transponder, Streaming vom Smartphone).
 

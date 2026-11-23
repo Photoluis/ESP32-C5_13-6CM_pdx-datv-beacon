@@ -2,9 +2,9 @@
 
 **Farol DATV DVB-S2 de banda dupla (13 cm e 6 cm) num único ESP32-C5, que usa o transmissor Wi-Fi como modulador I/Q.**
 
-[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · **Português** · [العربية](README_ar.md) · [日本語](README_ja.md)
+[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · **Português** · [العربية](README_ar.md) · [日本語](README_ja.md) · [Русский](README_ru.md)
 
-Painel em 11 línguas · Licença GPL-3.0
+Painel em 12 línguas · Licença GPL-3.0
 
 <table><tr><th width="50%">13 cm — 2375,000 MHz</th><th width="50%">6 cm — 5750,000 MHz</th></tr>
 <tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 a 2375 MHz com indicativo e frequência sobrepostos, LOCK, MER 23,4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 a 5750 MHz com indicativo e frequência sobrepostos, LOCK, MER 22,8 dB"></td></tr></table>
@@ -17,17 +17,19 @@ Painel em 11 línguas · Licença GPL-3.0
 
 ## O que faz
 
-* Gera um sinal **DVB-S2 QPSK 3/4** (tramas normais, pilotos) a **125 / 250 / 333 / 500 kS**, com o transport stream MPEG (padrão de teste em vídeo H.265 + áudio AAC, SDT com o seu indicativo) **construído em tempo real no chip**.
+* Gera um sinal **DVB-S2 QPSK 3/4** (tramas normais, pilotos) a **333 kS** (125 / 250 / 500 kS em desenvolvimento), com o transport stream MPEG (padrão de teste em vídeo H.265 + áudio AAC, SDT com o seu indicativo) **construído em tempo real no chip**.
 * Transmite alternando **13 cm (2300–2450 MHz)** e **6 cm (5650–5850 MHz)** num ciclo de farol: TX 13 cm → pausa → TX 6 cm → pausa.
 * Funciona numa **Waveshare ESP32-C5-Zero** (ESP32-C5, um só núcleo RISC-V, flash de 4 MB, sem PSRAM). Sem DAC externo e sem FPGA.
-* **Painel web** no seu próprio ponto de acesso (`C5_13-6CM_BEACON`, http://192.168.4.1) em 11 línguas: indicativo, frequências, symbol rate, nível, antena por banda (PCB ou IPEX), GPIO para relés externos / PTT, tempos do ciclo, **correção do cristal em ppm** com calculadora.
+* **Painel web** no seu próprio ponto de acesso (`C5_13-6CM_BEACON`, http://192.168.4.1) em 12 línguas: indicativo, frequências, symbol rate, nível, antena por banda (PCB ou IPEX), GPIO para relés externos / PTT, tempos do ciclo, **correção do cristal em ppm** com calculadora.
 * **Paragem sem botões:** duplo arranque, **GPIO STOP** à massa (interruptor, relé, comando remoto) ou STOP no painel.
+* **Portadora CW e farol Morse** a partir do painel (**CW START**) ou da porta série (`CW ON`, `CW MORSE`), com a frequência, a antena, os GPIO e o PTT da banda; para no fim da duração máxima, com BOOT ou com o GPIO STOP.
+* **Compensação térmica do cristal:** ao aquecer a partir do frio o cristal deriva até −8 kHz em 6 cm. Em CW / Morse o PLL segue a temperatura do chip a cada segundo (medido: de 8,6 kHz para 1,6 kHz pico a pico em 5 minutos); em DVB-S2 o PLL não pode mudar durante um segmento, por isso cada segmento começa já centrado na deriva prevista (erro máximo reduzido a metade). Ativação e temperatura de referência no painel.
 
 | Painel (telemóvel) | | |
 |---|---|---|
 | ![Português](docs/img/dashboard_pt.png) | ![English](docs/img/dashboard_en.png) | ![Español](docs/img/dashboard_es.png) |
 
-Todas as línguas: [IT](docs/img/dashboard_it.png) · [DE](docs/img/dashboard_de.png) · [FR](docs/img/dashboard_fr.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [JA](docs/img/dashboard_ja.png) · [AR](docs/img/dashboard_ar.png)
+Todas as línguas: [IT](docs/img/dashboard_it.png) · [DE](docs/img/dashboard_de.png) · [FR](docs/img/dashboard_fr.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [JA](docs/img/dashboard_ja.png) · [AR](docs/img/dashboard_ar.png) · [RU](docs/img/dashboard_ru.png)
 
 ## Como funciona (resumo)
 
@@ -93,8 +95,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 Primeira fase do projeto concluída (novembro de 2026). Testado no ar: DVB-S2 em 13 e 6 cm, transport stream em tempo real, ciclo do farol, painel, GPIO STOP, correção do cristal.
 
+23 de novembro de 2026: CW / Morse a partir do painel e compensação térmica do cristal, testadas também no ar.
+
 Próximos passos:
-* compensação por temperatura da deriva do cristal durante a TX (~1,6 ppm/min a frio);
+* symbol rates diferentes de 333 kS (125 / 250 / 500 kS e abaixo de 125 kS);
 * symbol rate de 1000 kS;
 * ligação SPI a um ESP32-S3 (painel durante a TX, transponder de banda cruzada, streaming a partir do telemóvel).
 

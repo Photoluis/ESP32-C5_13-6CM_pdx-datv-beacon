@@ -2,9 +2,9 @@
 
 **1 個の ESP32-C5 で動くデュアルバンド(13 cm / 6 cm)DVB-S2 DATV ビーコン。Wi-Fi 送信機を I/Q 変調器として使います。**
 
-[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · **日本語**
+[English](README.md) · [Italiano](README_it.md) · [Español](README_es.md) · [Deutsch](README_de.md) · [Português](README_pt.md) · [العربية](README_ar.md) · **日本語** · [Русский](README_ru.md)
 
-ダッシュボードは 11 言語 · ライセンス GPL-3.0
+ダッシュボードは 12 言語 · ライセンス GPL-3.0
 
 <table><tr><th width="50%">13 cm — 2375.000 MHz</th><th width="50%">6 cm — 5750.000 MHz</th></tr>
 <tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 23.4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB"></td></tr></table>
@@ -17,17 +17,19 @@
 
 ## 機能
 
-* **DVB-S2 QPSK 3/4**(ノーマルフレーム、パイロット)を **125 / 250 / 333 / 500 kS** で生成。MPEG トランスポートストリーム(H.265 映像 + AAC 音声のテストカード、コールサイン入り SDT)は**チップ上で実時間に構築**します。
+* **DVB-S2 QPSK 3/4**(ノーマルフレーム、パイロット)を **333 kS**(125 / 250 / 500 kS は開発中) で生成。MPEG トランスポートストリーム(H.265 映像 + AAC 音声のテストカード、コールサイン入り SDT)は**チップ上で実時間に構築**します。
 * ビーコンサイクルで **13 cm(2300–2450 MHz)** と **6 cm(5650–5850 MHz)** を交互に送信: 13 cm 送信 → 休止 → 6 cm 送信 → 休止。
 * **Waveshare ESP32-C5-Zero**(ESP32-C5、RISC-V シングルコア、フラッシュ 4 MB、PSRAM なし)で動作。外付け DAC も FPGA も不要です。
-* 専用アクセスポイント(`C5_13-6CM_BEACON`、http://192.168.4.1)上の **Web ダッシュボード**(11 言語): コールサイン、周波数、シンボルレート、レベル、バンドごとのアンテナ(基板 / IPEX)、外部リレー・PTT 用 GPIO、サイクル時間、計算機付きの **水晶補正(ppm)**。
+* 専用アクセスポイント(`C5_13-6CM_BEACON`、http://192.168.4.1)上の **Web ダッシュボード**(12 言語): コールサイン、周波数、シンボルレート、レベル、バンドごとのアンテナ(基板 / IPEX)、外部リレー・PTT 用 GPIO、サイクル時間、計算機付きの **水晶補正(ppm)**。
 * **ボタンなしで停止:** 2 回電源投入、**STOP GPIO** を GND に接続(スイッチ、リレー、リモコン)、またはダッシュボードの STOP。
+* ダッシュボード(**CW START**)またはシリアル(`CW ON`、`CW MORSE`)から **CW キャリアとモールスビーコン**。バンドの周波数・アンテナ・GPIO・PTT を使い、最大時間、BOOT、STOP GPIO で停止します。
+* **水晶の温度補償:** 冷えた状態から温まると、水晶は 6 cm で最大 −8 kHz ずれます。CW / モールスでは PLL が毎秒チップ温度に追従します(実測: 5 分間で 8.6 kHz → 1.6 kHz ピークツーピーク)。DVB-S2 ではセグメント中に PLL を変えられないため、各セグメントは予測ドリフトの中央に合わせて始まります(最大誤差は半分)。オン/オフと基準温度はダッシュボードで設定します。
 
 | ダッシュボード(スマートフォン) | | |
 |---|---|---|
 | ![日本語](docs/img/dashboard_ja.png) | ![English](docs/img/dashboard_en.png) | ![Italiano](docs/img/dashboard_it.png) |
 
-全言語: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [AR](docs/img/dashboard_ar.png) — ページ全体: [JA](docs/img/dashboard_full_ja.png) · [EN](docs/img/dashboard_full_en.png) · [IT](docs/img/dashboard_full_it.png)
+全言語: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png) · [PT](docs/img/dashboard_pt.png) · [NL](docs/img/dashboard_nl.png) · [PL](docs/img/dashboard_pl.png) · [EL](docs/img/dashboard_el.png) · [AR](docs/img/dashboard_ar.png) · [RU](docs/img/dashboard_ru.png) — ページ全体: [JA](docs/img/dashboard_full_ja.png) · [EN](docs/img/dashboard_full_en.png) · [IT](docs/img/dashboard_full_it.png)
 
 ## 仕組み(概要)
 
@@ -93,8 +95,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 プロジェクトの第 1 段階が完了しました(2026 年 11 月)。実電波で確認済み: 13 cm と 6 cm の DVB-S2、実時間 TS、ビーコンサイクル、ダッシュボード、STOP GPIO、水晶補正。
 
+2026 年 11 月 23 日: ダッシュボードからの CW / モールスと水晶の温度補償を実電波でも確認。
+
 次の段階:
-* 送信中の水晶ドリフト(冷えた状態から約 1.6 ppm/分)の温度補償
+* 333 kS 以外のシンボルレート(125 / 250 / 500 kS と 125 kS 未満)
 * 1000 kS のシンボルレート
 * ESP32-S3 との SPI 接続(送信中のダッシュボード、クロスバンド・トランスポンダ、スマートフォンからのストリーミング)
 
