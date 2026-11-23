@@ -433,6 +433,8 @@ void app_main(void)
             } else if (!strcmp(sub, "AMP")) {
                 pdx_rf_cw_set_amp(atoi(rest));
                 printf("OK cw amp %d (%.1f dB)\n", pdx_rf_cw_amp(), 20.0 * log10(pdx_rf_cw_amp() / 480.0));
+            } else if (!strcmp(sub, "KEY") && pdx_rf_cw_active()) {
+                printf("ERR cw in corso: CW OFF prima\n");
             } else if (!strcmp(sub, "KEY")) {
                 pdx_rf_cw_set_key_pa(rest[0] == 'p' || rest[0] == 'P');
                 printf("OK cw key %s\n", pdx_rf_cw_key_pa() ? "PA" : "DAC");

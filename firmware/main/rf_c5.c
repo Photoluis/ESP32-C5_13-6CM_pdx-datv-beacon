@@ -395,7 +395,7 @@ void pdx_rf_set_stop_gpio(int g) { stop_mask = (1u << 28) | (g >= 0 && g < 28 ? 
 #define CW_WORDS 64u
 #define CW_VAL (0x80000u | CW_WORDS)                 /* bit19 = ciclo, [13:0] = lunghezza */
 static volatile bool cw_stop_req, cw_running;
-static uint8_t cw_key_pa;
+static uint8_t cw_key_pa = 1;                 /* 23/11 in RF: PA = spento completo, stessa frequenza e livello a ogni tasto */
 static int cw_amp = 300;
 static uint32_t cw_owner0, cw_ctrl0;
 static pdx_cw_job_t *cw_job;
