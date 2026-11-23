@@ -27,7 +27,7 @@ Dashboard in 12 languages · License GPL-3.0
 * Runs on a **Waveshare ESP32-C5-Zero** (ESP32-C5, single RISC-V core, 4 MB flash, no PSRAM). No external DAC, no FPGA.
 * **Web dashboard** on its own access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 languages: callsign, frequencies, symbol rate, level, antenna per band (PCB or IPEX), GPIOs for external relays / PTT, cycle timing, **crystal correction in ppm** with a calculator.
 * **Stop without buttons:** double power-up, a **STOP GPIO** to ground (switch, relay, remote control), or STOP from the dashboard.
-* **CW carrier and Morse beacon** from the dashboard (**CW START**) or from the serial port (`CW ON`, `CW MORSE`), with the band's frequency, antenna, GPIOs and PTT; it stops at the maximum duration, with BOOT or with the STOP GPIO.
+* **CW carrier and Morse beacon** from the dashboard (**CW START**) or from the serial port (`CW ON`, `CW MORSE`), with the band's frequency, antenna, GPIOs and PTT; it stops at the maximum duration, with BOOT or with the STOP GPIO. **Experimental:** the unmodulated CW carrier and the Morse mode still need further on-air tests before they can be considered stable.
 * **Crystal thermal compensation:** warming up from cold, the crystal drifts by up to −8 kHz on 6 cm. In CW / Morse the PLL follows the chip temperature every second (measured: from 8.6 kHz to 1.6 kHz peak-to-peak over 5 minutes); in DVB-S2 the PLL cannot change during a segment, so each segment starts already centred on the predicted drift (maximum error halved). On / off and reference temperature from the dashboard.
 
 | Dashboard (phone) | | |

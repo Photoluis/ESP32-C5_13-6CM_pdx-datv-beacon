@@ -27,7 +27,7 @@ Dashboard in 12 lingue · Licenza GPL-3.0
 * Gira su una **Waveshare ESP32-C5-Zero** (ESP32-C5, un solo core RISC-V, flash 4 MB, niente PSRAM). Nessun DAC esterno, nessuna FPGA.
 * **Dashboard web** sul suo access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 lingue: nominativo, frequenze, symbol rate, livello, antenna per banda (PCB o IPEX), GPIO per relè esterni / PTT, tempi del ciclo, **correzione del quarzo in ppm** con calcolatore.
 * **Stop senza tasti:** doppia accensione, **GPIO STOP** a massa (interruttore, relè, telecomando) oppure STOP dalla dashboard.
-* **Portante CW e beacon Morse** dalla dashboard (**CW START**) o dalla seriale (`CW ON`, `CW MORSE`), con frequenza, antenna, GPIO e PTT della banda; si ferma alla durata massima, con BOOT o con il GPIO STOP.
+* **Portante CW e beacon Morse** dalla dashboard (**CW START**) o dalla seriale (`CW ON`, `CW MORSE`), con frequenza, antenna, GPIO e PTT della banda; si ferma alla durata massima, con BOOT o con il GPIO STOP. **Sperimentale:** la portante CW non modulata e il Morse richiedono ancora altre prove in aria prima di potersi considerare stabili.
 * **Compensazione termica del quarzo:** scaldandosi da freddo il quarzo deriva fino a −8 kHz a 6 cm. In CW / Morse il PLL segue la temperatura del chip ogni secondo (misurato: da 8,6 kHz a 1,6 kHz picco-picco in 5 minuti); in DVB-S2 il PLL non può cambiare durante un segmento, quindi ogni segmento parte già centrato sulla deriva prevista (errore massimo dimezzato). Attivazione e temperatura di riferimento dalla dashboard.
 
 | Dashboard (telefono) | | |

@@ -27,7 +27,7 @@ Panel en 12 idiomas · Licencia GPL-3.0
 * Funciona en una **Waveshare ESP32-C5-Zero** (ESP32-C5, un solo núcleo RISC-V, flash de 4 MB, sin PSRAM). Sin DAC externo y sin FPGA.
 * **Panel web** en su propio punto de acceso (`C5_13-6CM_BEACON`, http://192.168.4.1) en 12 idiomas: indicativo, frecuencias, symbol rate, nivel, antena por banda (PCB o IPEX), GPIO para relés externos / PTT, tiempos del ciclo, **corrección del cristal en ppm** con calculadora.
 * **Parada sin botones:** doble encendido, **GPIO STOP** a masa (interruptor, relé, mando a distancia) o STOP desde el panel.
-* **Portadora CW y baliza Morse** desde el panel (**CW START**) o por el puerto serie (`CW ON`, `CW MORSE`), con la frecuencia, la antena, los GPIO y el PTT de la banda; se detiene al llegar a la duración máxima, con BOOT o con el GPIO STOP.
+* **Portadora CW y baliza Morse** desde el panel (**CW START**) o por el puerto serie (`CW ON`, `CW MORSE`), con la frecuencia, la antena, los GPIO y el PTT de la banda; se detiene al llegar a la duración máxima, con BOOT o con el GPIO STOP. **Experimental:** la portadora CW sin modular y el Morse necesitan todavía más pruebas en el aire antes de considerarse estables.
 * **Compensación térmica del cristal:** al calentarse desde frío el cristal deriva hasta −8 kHz en 6 cm. En CW / Morse el PLL sigue la temperatura del chip cada segundo (medido: de 8,6 kHz a 1,6 kHz pico a pico en 5 minutos); en DVB-S2 el PLL no puede cambiar durante un segmento, así que cada segmento empieza ya centrado en la deriva prevista (error máximo reducido a la mitad). Activación y temperatura de referencia desde el panel.
 
 | Panel (teléfono) | | |
