@@ -143,8 +143,11 @@ def video_graph(td: Path, a, loop_s: float) -> str:
 def make_template_ts(td: Path, a, loop_s: float, path: Path, bg_png: Path):
     rate = ts_bitrate(a.sr)
     audio_k = 32
-    if rate < 400000:   # TS lento del firmware: PSI/PCR ~23 kbit/s, audio a 5 frame per PES ~29 kbit/s nel TS
-        video_k = max(16, int(rate * 0.88 / 1000) - 60)
+    if rate < 400000:   # TS lento del firmware: PSI/PCR ~23 kbit/s, audio 5 frame per PES (24 kbit/s: 2 pacchetti ogni 5)
+        audio_k = 24
+        # 23/11 a 125 kS: x265 esce ~20% sopra il bersaglio e ogni fotogramma spreca mezzo pacchetto TS (25/s):
+        # con 77-99 kbit/s il video arrivava fino a 1,7 s dopo il PTS
+        video_k = max(16, int((rate - 63000) * 0.5 / 1000))
     else:               # PSI/PCR ~69 kbit/s, audio un frame per PES ~71 kbit/s
         video_k = int(rate * 0.80 / 1000) - audio_k
     graph = video_graph(td, a, loop_s)
@@ -156,7 +159,9 @@ def make_template_ts(td: Path, a, loop_s: float, path: Path, bg_png: Path):
            else ["-f", "lavfi", "-i", "sine=frequency=1000:sample_rate=48000"])
     run([FF, "-hide_banner", "-loglevel", "error", "-y", *src, *aud, "-t", f"{loop_s + 1.0:.3f}",
          "-filter_complex", graph, "-map", "[v]", "-map", "1:a:0",
-         "-color_range", "tv", "-c:v", "libx265", "-crf", "24",       # qualità costante, tetto VBV del canale
+         "-color_range", "tv", "-c:v", "libx265",
+         # 333 kS: qualità costante con tetto VBV; TS lento: bitrate medio (23/11: in CRF a 125 kS usciva ~109 kbit/s su 77)
+         *(["-crf", "24"] if rate >= 400000 else ["-b:v", f"{video_k}k"]),
          "-x265-params", f"{X265}:slices={ROWS_PIC}:vbv-maxrate={video_k}:vbv-bufsize={video_k}",
          "-c:a", "aac", "-b:a", f"{audio_k}k", "-ac", "1", "-ar", "48000",
          "-f", "mpegts", "-muxrate", str(int(rate)), "-pcr_period", "40", "-mpegts_flags", "+initial_discontinuity",

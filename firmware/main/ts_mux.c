@@ -166,7 +166,12 @@ static void start_pes_raw(pdx_mux_t *m, pdx_es_cursor_t *c, uint64_t pts_abs, co
     c->iseg = 0;
     c->pl_rem = len;
     c->active = true;
-    if (pts_abs < now_90k(m)) m->late++;
+    if (pts_abs < now_90k(m)) {
+        m->late++;
+        if (video) m->late_v++;
+        const int32_t ms = (int32_t)((now_90k(m) - pts_abs) / 90u);
+        if (ms > m->late_max_ms) m->late_max_ms = ms;
+    }
 }
 
 /* voce IDR della sovrimpressione per l'unità ui (NULL se non è un IDR con strisce) */
@@ -283,7 +288,10 @@ static bool try_stream(pdx_mux_t *m, pdx_es_cursor_t *c, uint8_t kind, uint16_t 
 {
     if (!c->active) {
         const pdx_es_unit_t *u = peek(c, kind);
-        if (!u || unit_pts(m, c, u) > now_90k(m) + LEAD_90K) return false;
+        /* TS lento: il video parte fino a 4 s prima (23/11: a 125 kS, 99 kbit/s, un IDR del monoscopio impiega più di 1 s
+         * a uscire e arrivava dopo il suo PTS: 484 PES in ritardo in 30 s, ricevitore in LOCK senza video) */
+        const uint32_t lead = (kind == 0 && m->lowrate) ? 4u * LEAD_90K : LEAD_90K;
+        if (!u || unit_pts(m, c, u) > now_90k(m) + lead) return false;
         start_pes(m, c, u, kind == 0);
         if (kind == 1 && m->lowrate) group_audio(m, c);
     }
@@ -363,7 +371,7 @@ const char *pdx_mux_init(pdx_mux_t *m, const uint8_t *es_file, double rate, cons
     last.t90k = m->t0_90k;
     last.us = esp_timer_get_time();
     last.pmt_ver = m->pmt_ver;
-    m->pts_base = m->t0_90k + DELAY_90K;
+    m->pts_base = m->t0_90k + (m->lowrate ? 4u * LEAD_90K + 9000u : DELAY_90K);   /* TS lento: primo PTS a 4,1 s */
     strncpy(m->service, service, sizeof(m->service) - 1);
     strncpy(m->provider, provider, sizeof(m->provider) - 1);
     const pdx_es_unit_t *units = (const pdx_es_unit_t *)(es_file + sizeof(*h));

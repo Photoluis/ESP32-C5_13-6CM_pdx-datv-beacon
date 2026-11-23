@@ -1604,6 +1604,8 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     stream_kind = 0;
     tx_dry = false;
     pdx_xc_print_segment();
+    printf("S2 mux: PES in ritardo %" PRIu32 " (video %" PRIu32 "), massimo %" PRId32 " ms\n", live_mux.late,
+           live_mux.late_v, live_mux.late_max_ms);
     return NULL;
 }
 

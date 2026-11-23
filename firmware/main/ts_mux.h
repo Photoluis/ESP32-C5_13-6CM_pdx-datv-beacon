@@ -89,7 +89,8 @@ typedef struct {
     char service[24], provider[40];
     const pdx_es_header_t *es;
     pdx_es_cursor_t v, a;
-    uint32_t late;                       /* PES iniziati dopo il loro tempo di decodifica */
+    uint32_t late, late_v;               /* PES iniziati dopo il loro tempo di decodifica (tutti, solo video) */
+    int32_t late_max_ms;                 /* ritardo massimo di un PES (ms) */
     /* sovrimpressione (C5): strisce composte in flash da pdx_mux_set_overlay, inserite negli IDR */
     const pdx_ovl_header_t *ovl;
     const uint8_t *ovl_blob[PDX_OVL_FIELDS];
