@@ -9,6 +9,8 @@
 #include "rf_c5.h"
 #include "chip_temp.h"
 
+#include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -104,6 +106,55 @@ static bool rf_hw_ready;                     /* cattura di preparazione già fat
 bool pdx_rf_dirty(void) { return rf_hw_ready; }
 
 void pdx_rf_set_ppm(int32_t ppm_x100) { xtal_ppm_x100 = ppm_x100; }
+
+/* Compensazione termica del quarzo (23/11, misura F: 6 cm da fredda, portante 300 s, frequenza dalla Pluto).
+ * Il quarzo segue la temperatura del chip con due ritardi: errore relativo (ppb) rispetto al regime a xc_tref
+ *   e = c1*(F1-Tref) + c2*(F2-Tref) + c3*((F2-50)^2 - (Tref-50)^2),  F1/F2 = temperatura filtrata con tau1/tau2.
+ * Misura F: -8,6 kHz in 120 s poi +1,3 kHz; resto del modello 83 Hz rms, <190 Hz dopo 3 s. Per ora solo in CW. */
+static bool xc_on = true, xc_apply;
+static float xc_c1 = -44.66f, xc_c2 = -126.92f, xc_c3 = 5.278f, xc_tau1 = 3.0f, xc_tau2 = 32.5f, xc_tref = 70.0f;
+static float xc_f1, xc_f2, xc_t;
+static int64_t xc_us;
+static bool xc_init;
+static int32_t xc_ppb;
+
+void pdx_xc_update(float tc)
+{
+    if (isnan(tc)) return;
+    const int64_t now = esp_timer_get_time();
+    if (!xc_init) { xc_f1 = xc_f2 = tc; xc_init = true; }
+    else {
+        const float dt = (float)(now - xc_us) * 1e-6f;
+        xc_f1 += (1.0f - expf(-dt / xc_tau1)) * (tc - xc_f1);
+        xc_f2 += (1.0f - expf(-dt / xc_tau2)) * (tc - xc_f2);
+    }
+    xc_us = now;
+    xc_t = tc;
+    const float a = xc_f2 - 50.0f, r = xc_tref - 50.0f;
+    xc_ppb = (int32_t)lroundf(xc_c1 * (xc_f1 - xc_tref) + xc_c2 * (xc_f2 - xc_tref) + xc_c3 * (a * a - r * r));
+}
+int32_t pdx_xc_ppb(void) { return xc_ppb; }
+void pdx_xc_set(bool on) { xc_on = on; }
+void pdx_xc_set_ref(float t) { xc_tref = t; }
+void pdx_xc_set_k(float c1, float c2, float c3, float tau1, float tau2)
+{
+    xc_c1 = c1; xc_c2 = c2; xc_c3 = c3;
+    xc_tau1 = tau1 < 0.1f ? 0.1f : tau1;
+    xc_tau2 = tau2 < 0.1f ? 0.1f : tau2;
+}
+void pdx_xc_print(void)
+{
+    printf("OK xc %s (%s) ppb %+" PRId32 " | T %.1f F1 %.1f F2 %.1f C | ref %.1f C | k %.2f %.2f %.3f tau %.1f %.1f s\n",
+           xc_on ? "ON" : "OFF", xc_apply ? "applicata" : "solo CW", xc_ppb, (double)xc_t, (double)xc_f1,
+           (double)xc_f2, (double)xc_tref, (double)xc_c1, (double)xc_c2, (double)xc_c3, (double)xc_tau1,
+           (double)xc_tau2);
+}
+static uint32_t pll_khz_for(uint32_t khz)
+{
+    double e = 1.0 + (double)xtal_ppm_x100 * 1e-8;
+    if (xc_apply && xc_on) e *= 1.0 + (double)xc_ppb * 1e-9;
+    return (uint32_t)((double)khz / e + 0.5);
+}
 uint32_t pdx_rf_prog_khz(void) { return prog_khz; }
 
 bool pdx_rf_tune(unsigned mhz) { return pdx_rf_tune_khz(mhz * 1000u); }
@@ -111,7 +162,7 @@ bool pdx_rf_tune(unsigned mhz) { return pdx_rf_tune_khz(mhz * 1000u); }
 bool pdx_rf_tune_khz(uint32_t khz)
 {
     if (khz < 2300000u || (khz > 2500000u && khz < 4900000u) || khz > 5900000u) return false;
-    const uint32_t pk = (uint32_t)((double)khz / (1.0 + (double)xtal_ppm_x100 * 1e-8) + 0.5);
+    const uint32_t pk = pll_khz_for(khz);
     phy_set_freq(pk / 1000u, (int)(pk % 1000u));
     rx_idle();
     cur_khz = khz;
@@ -442,11 +493,14 @@ static bool cw_check(void)                           /* false = fermare */
     const int64_t now = esp_timer_get_time();
     if (now >= cw_next_log) {                        /* registro al secondo: tempo, temperatura del chip, PLL */
         cw_next_log += 1000000;
-        const float tc = cw_tlog_s && (cw_nlog % cw_tlog_s) == 0 ? pdx_temp_read() : NAN;
+        const float tc = (cw_tlog_s && (cw_nlog % cw_tlog_s) == 0) || xc_on ? pdx_temp_read() : NAN;
         cw_nlog++;
+        pdx_xc_update(tc);
+        if (pll_khz_for(cur_khz) != prog_khz) pdx_rf_tune_khz(cur_khz);    /* ~1 ms, passo 1 kHz */
         printf("CWT %lld s %.2f C PLL %" PRIu32 " kHz tasto %d ctrl %08" PRIx32 " d8 %08" PRIx32 " own %08" PRIx32
-               " fix %" PRIu32 "\n", (long long)((now - cw_t0) / 1000000), (double)tc, prog_khz, cw_key_state ? 1 : 0,
-               rd(PDX_C5_DUMP_BASE + 0x0Cu), rd(PDX_C5_DUMP_BASE + 8u), rd(PDX_C5_SRAM_OWNER), cw_fix);
+               " fix %" PRIu32 " xc %+" PRId32 " ppb F1 %.1f F2 %.1f\n", (long long)((now - cw_t0) / 1000000), (double)tc,
+               prog_khz, cw_key_state ? 1 : 0, rd(PDX_C5_DUMP_BASE + 0x0Cu), rd(PDX_C5_DUMP_BASE + 8u),
+               rd(PDX_C5_SRAM_OWNER), cw_fix, xc_on ? xc_ppb : 0, (double)xc_f1, (double)xc_f2);
     }
     if (cw_guard && cw_key_state && now / 1000 >= cw_next_guard_ms) {
         cw_next_guard_ms = (uint32_t)(now / 1000) + 100u;
@@ -538,6 +592,11 @@ static void cw_task_fn(void *arg)
     tx_dry = j->dry != 0;
     tx_on();                                          /* PA accesa (anche con la manipolazione PA: poi segue il tasto) */
     esp_rom_delay_us(3000);
+    /* il modello è tarato con letture a PA accesa (a riposo il chip legge ~9 C in meno): filtri ripartono da qui */
+    xc_init = false;
+    pdx_xc_update(pdx_temp_read());
+    xc_apply = true;
+    pdx_rf_tune_khz(cur_khz);
     if (cw_key_pa && j->text[0]) tx_off();
     if (!j->text[0]) {                                /* portante fissa */
         cw_key(true);
@@ -557,6 +616,7 @@ static void cw_task_fn(void *arg)
     if (cw_key_state) { cw_key_state = false; cw_dac(false); }
     tx_off();
     tx_dry = false;
+    xc_apply = false;
     phy_txcal_work_mode();
     pdx_rf_tune_khz(cur_khz);
     for (unsigned k = 0; k < CW_WORDS + 4u; k++) PDX_C5_BANK[k] = 0;

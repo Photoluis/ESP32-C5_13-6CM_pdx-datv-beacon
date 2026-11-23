@@ -46,6 +46,13 @@ void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, 
 typedef struct { unsigned max_s, wpm, pause_s, carrier_s, dry; char text[48]; } pdx_cw_job_t;   /* dry: motore senza RF */
 const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why));   /* NULL = partito */
 void pdx_rf_cw_stop(void);
+/* compensazione termica del quarzo (per ora applicata solo durante CW/Morse) */
+void pdx_xc_update(float tc);                /* temperatura del chip in C (NaN = ignorata) */
+int32_t pdx_xc_ppb(void);
+void pdx_xc_set(bool on);
+void pdx_xc_set_ref(float t);
+void pdx_xc_set_k(float c1, float c2, float c3, float tau1, float tau2);
+void pdx_xc_print(void);
 void pdx_rf_cw_set_guard(unsigned g);      /* 0 = no, 1 = ripristino se i registri cambiano, 2 = force_txon ogni 100 ms */
 void pdx_rf_cw_set_tlog(unsigned s);       /* temperatura nelle righe CWT ogni s secondi (0 = non leggere) */
 void pdx_rf_cw_retune(uint32_t khz);         /* durante la CW: nuova frequenza vera (prova del PLL in TX) */

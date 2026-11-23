@@ -33,7 +33,7 @@
 #include "rf_c5.h"
 #include "chip_temp.h"
 
-#define FW_VERSION "C5-B4c-CWT"
+#define FW_VERSION "C5-B5a-XC"
 
 static bool tx_armed;
 
@@ -436,6 +436,19 @@ void app_main(void)
             } else if (!strcmp(sub, "AMP")) {
                 pdx_rf_cw_set_amp(atoi(rest));
                 printf("OK cw amp %d (%.1f dB)\n", pdx_rf_cw_amp(), 20.0 * log10(pdx_rf_cw_amp() / 480.0));
+            } else if (!strcmp(sub, "XC")) {            /* CW XC [ON|OFF|REF t|K c1 c2 c3 tau1 tau2] */
+                char xs[8] = {0};
+                float v[5];
+                sscanf(rest, "%7s", xs);
+                for (char *c = xs; *c; c++) if (*c >= 'a' && *c <= 'z') *c -= 32;
+                if (!strcmp(xs, "ON")) pdx_xc_set(true);
+                else if (!strcmp(xs, "OFF")) pdx_xc_set(false);
+                else if (!strcmp(xs, "REF") && sscanf(rest, "%*s %f", &v[0]) == 1) pdx_xc_set_ref(v[0]);
+                else if (!strcmp(xs, "K") && sscanf(rest, "%*s %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5)
+                    pdx_xc_set_k(v[0], v[1], v[2], v[3], v[4]);
+                else if (xs[0]) { printf("ERR uso: CW XC [ON|OFF|REF t|K c1 c2 c3 tau1 tau2]\n"); continue; }
+                if (!pdx_rf_cw_active()) pdx_xc_update(pdx_temp_read());
+                pdx_xc_print();
             } else if (!strcmp(sub, "GUARD")) {
                 pdx_rf_cw_set_guard((unsigned)atoi(rest));
                 printf("OK cw guard %d\n", atoi(rest));
