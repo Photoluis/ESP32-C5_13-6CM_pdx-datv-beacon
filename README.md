@@ -17,7 +17,7 @@ Dashboard in 12 languages · License GPL-3.0
 
 ## What it does
 
-* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **333 kS** (125 / 250 / 500 kS in development), with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
+* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **333 / 250 / 125 / 100 / 66 kS** (tested on reception: 333 and 125 kS; 250, 100 and 66 kS transmitted correctly but reception not yet verified; 500 kS in development), with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
 * Transmits alternately on **13 cm (2300–2450 MHz)** and **6 cm (5650–5850 MHz)** in a beacon cycle: TX 13 cm → pause → TX 6 cm → pause.
 * Runs on a **Waveshare ESP32-C5-Zero** (ESP32-C5, single RISC-V core, 4 MB flash, no PSRAM). No external DAC, no FPGA.
 * **Web dashboard** on its own access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 languages: callsign, frequencies, symbol rate, level, antenna per band (PCB or IPEX), GPIOs for external relays / PTT, cycle timing, **crystal correction in ppm** with a calculator.
@@ -69,6 +69,13 @@ python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
 ```
 
+**Low symbol rates:** below 333 kS the standard test card does not fit in the stream. Generate a lighter one for the lowest SR you will use (`--sr`) and write it at `0x340000`: below 333 kS the C5 picks it automatically, from 333 kS up it keeps the standard one at `0x290000` (better picture). With two cards, the one at `0x290000` must stay under 704 KB.
+
+```
+python make_es_c5.py --sr 125000 -o ../out/c5_mono_es_neutral_125000.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x340000 ../out/c5_mono_es_neutral_125000.bin
+```
+
 **Personal test card:** instead of the bars you can use your own picture (`--image`, scaled to 640x360) or a short video (`--video`, repeated or cut to 19.2 s × `--loops`), with its own audio (`--audio`, otherwise a 1 kHz tone). The callsign strip is darkened to 50 % so the picture stays visible behind it; the frequency strip is solid. With a video, the strip area is frozen on the first frame. `--preview` composes the strips like the C5 and decodes the result for a check. The file goes to `0x290000` like the standard one (maximum 1.4 MB).
 
 ```
@@ -95,10 +102,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 First project phase completed (November 2026). Tested on air: DVB-S2 on 13 and 6 cm, live transport stream, beacon cycle, dashboard, STOP GPIO, crystal correction.
 
-23 November 2026: CW / Morse from the dashboard and crystal thermal compensation, also tested on air.
+23 November 2026: CW / Morse from the dashboard and crystal thermal compensation, also tested on air; 125 kS received with picture (LOCK, MER 23.5 dB, VBER 0).
 
 Next steps:
-* symbol rates other than 333 kS (125 / 250 / 500 kS and below 125 kS);
+* reception tests at 250, 100 and 66 kS; 500 kS;
 * 1000 kS symbol rate;
 * SPI link to an ESP32-S3 (dashboard during TX, cross-band transponder, streaming from a phone).
 

@@ -17,7 +17,7 @@ Dashboard in 12 Sprachen · Lizenz GPL-3.0
 
 ## Was sie kann
 
-* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **333 kS** (125 / 250 / 500 kS in Entwicklung); der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
+* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **333 / 250 / 125 / 100 / 66 kS** (im Empfang geprüft: 333 und 125 kS; 250, 100 und 66 kS werden korrekt gesendet, der Empfang ist noch nicht geprüft; 500 kS in Entwicklung); der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
 * Sendet im Bakenzyklus abwechselnd auf **13 cm (2300–2450 MHz)** und **6 cm (5650–5850 MHz)**: TX 13 cm → Pause → TX 6 cm → Pause.
 * Läuft auf einem **Waveshare ESP32-C5-Zero** (ESP32-C5, ein RISC-V-Kern, 4 MB Flash, kein PSRAM). Kein externer DAC, kein FPGA.
 * **Web-Dashboard** über einen eigenen Access Point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 Sprachen: Rufzeichen, Frequenzen, Symbolrate, Pegel, Antenne pro Band (PCB oder IPEX), GPIOs für externe Relais / PTT, Zykluszeiten, **Quarzkorrektur in ppm** mit Rechner.
@@ -69,6 +69,13 @@ python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
 ```
 
+**Niedrige Symbolraten:** unter 333 kS passt das Standard-Testbild nicht in den Datenstrom. Ein leichteres für die niedrigste verwendete Symbolrate erzeugen (`--sr`) und nach `0x340000` schreiben: unter 333 kS wählt die C5 es selbst, ab 333 kS bleibt das Standard-Testbild bei `0x290000` (besseres Bild). Bei zwei Testbildern muss das bei `0x290000` unter 704 KB bleiben.
+
+```
+python make_es_c5.py --sr 125000 -o ../out/c5_mono_es_neutral_125000.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x340000 ../out/c5_mono_es_neutral_125000.bin
+```
+
 **Eigenes Testbild:** statt der Balken lässt sich ein eigenes Bild (`--image`, auf 640x360 skaliert) oder ein kurzes Video (`--video`, wiederholt oder auf 19,2 s × `--loops` gekürzt) mit eigenem Ton (`--audio`, sonst ein 1-kHz-Ton) verwenden. Der Rufzeichenstreifen wird zu 50 % abgedunkelt, damit das Bild dahinter sichtbar bleibt; der Frequenzstreifen ist deckend. Bei einem Video bleibt der Streifenbereich auf dem ersten Bild stehen. `--preview` setzt die Streifen wie die C5 zusammen und dekodiert das Ergebnis zur Kontrolle. Die Datei kommt wie die Standarddatei nach `0x290000` (höchstens 1,4 MB).
 
 ```
@@ -95,10 +102,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 Erste Projektphase abgeschlossen (November 2026). Auf Sendung getestet: DVB-S2 auf 13 und 6 cm, Transportstrom in Echtzeit, Bakenzyklus, Dashboard, STOP-GPIO, Quarzkorrektur.
 
-23. November 2026: CW / Morse aus dem Dashboard und thermische Quarzkompensation, auch on air erprobt.
+23. November 2026: CW / Morse aus dem Dashboard und thermische Quarzkompensation, auch on air erprobt; 125 kS mit Bild empfangen (LOCK, MER 23,5 dB, VBER 0).
 
 Nächste Schritte:
-* andere Symbolraten als 333 kS (125 / 250 / 500 kS und unter 125 kS);
+* Empfangstests bei 250, 100 und 66 kS; 500 kS;
 * Symbolrate 1000 kS;
 * SPI-Verbindung zu einem ESP32-S3 (Dashboard während der Sendung, Crossband-Transponder, Streaming vom Smartphone).
 

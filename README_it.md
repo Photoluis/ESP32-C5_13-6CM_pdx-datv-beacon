@@ -17,7 +17,7 @@ Dashboard in 12 lingue · Licenza GPL-3.0
 
 ## Cosa fa
 
-* Genera un segnale **DVB-S2 QPSK 3/4** (frame normali, pilot) a **333 kS** (125 / 250 / 500 kS in sviluppo), con il transport stream MPEG (monoscopio video H.265 + audio AAC, SDT con il tuo nominativo) **costruito in tempo reale sul chip**.
+* Genera un segnale **DVB-S2 QPSK 3/4** (frame normali, pilot) a **333 / 250 / 125 / 100 / 66 kS** (provati in ricezione: 333 e 125 kS; 250, 100 e 66 kS trasmessi correttamente ma ricezione ancora da verificare; 500 kS in sviluppo), con il transport stream MPEG (monoscopio video H.265 + audio AAC, SDT con il tuo nominativo) **costruito in tempo reale sul chip**.
 * Trasmette alternando **13 cm (2300–2450 MHz)** e **6 cm (5650–5850 MHz)** in un ciclo da beacon: TX 13 cm → pausa → TX 6 cm → pausa.
 * Gira su una **Waveshare ESP32-C5-Zero** (ESP32-C5, un solo core RISC-V, flash 4 MB, niente PSRAM). Nessun DAC esterno, nessuna FPGA.
 * **Dashboard web** sul suo access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 lingue: nominativo, frequenze, symbol rate, livello, antenna per banda (PCB o IPEX), GPIO per relè esterni / PTT, tempi del ciclo, **correzione del quarzo in ppm** con calcolatore.
@@ -69,6 +69,13 @@ python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
 ```
 
+**Symbol rate bassi:** sotto i 333 kS il monoscopio standard non entra nel flusso. Generane uno più leggero per l'SR più basso che userai (`--sr`) e scrivilo a `0x340000`: sotto i 333 kS la C5 lo sceglie da sola, da 333 kS in su usa quello standard a `0x290000` (immagine migliore). Con due monoscopi quello a `0x290000` deve restare sotto i 704 KB.
+
+```
+python make_es_c5.py --sr 125000 -o ../out/c5_mono_es_neutral_125000.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x340000 ../out/c5_mono_es_neutral_125000.bin
+```
+
 **Monoscopio personale:** al posto delle barre si può usare una propria immagine (`--image`, adattata a 640x360) o un breve video (`--video`, ripetuto o tagliato a 19,2 s × `--loops`), con il suo audio (`--audio`, altrimenti un tono da 1 kHz). La striscia del nominativo è scurita al 50 %, così l'immagine resta visibile dietro; quella della frequenza è piena. Con un video la zona delle strisce resta ferma sul primo fotogramma. `--preview` compone le strisce come la C5 e decodifica il risultato per controllo. Il file va a `0x290000` come quello standard (massimo 1,4 MB).
 
 ```
@@ -95,10 +102,10 @@ python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o 
 
 Prima fase del progetto completata (novembre 2026). Provato in aria: DVB-S2 a 13 e 6 cm, transport stream in tempo reale, ciclo del beacon, dashboard, GPIO STOP, correzione del quarzo.
 
-23 novembre 2026: CW / Morse dalla dashboard e compensazione termica del quarzo, provate anche in aria.
+23 novembre 2026: CW / Morse dalla dashboard e compensazione termica del quarzo, provate anche in aria; 125 kS ricevuto con immagine (LOCK, MER 23,5 dB, VBER 0).
 
 Prossimi passi:
-* symbol rate diversi da 333 kS (125 / 250 / 500 kS e sotto i 125 kS);
+* prove in ricezione a 250, 100 e 66 kS; 500 kS;
 * symbol rate 1000 kS;
 * collegamento SPI con una ESP32-S3 (dashboard durante la TX, transponder in banda incrociata, streaming dal telefono).
 
