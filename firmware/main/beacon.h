@@ -26,7 +26,18 @@ typedef struct {
     char ap_pass[16];       /* password dell'access point della dashboard (8..15 caratteri) */
     /* --- v6 (blob v4/v5 = 68 byte, fin qui) --- */
     int16_t ppm_x100;       /* errore del quarzo in centesimi di ppm (+ = la scheda esce alta), -10000..10000 */
-    uint8_t rsv2[2];
+    /* --- v7 (blob v6 = 72 byte fin qui: i due byte seguenti erano riservati) --- */
+    uint8_t xc;             /* bit 0 = compensazione termica del quarzo (CW/Morse), bit 1 = pre-centraggio DVB-S2 */
+    uint8_t cw_wpm;         /* Morse: parole al minuto 5..40 */
+    int16_t xc_ref_x10;     /* temperatura del chip a regime (decimi di C) a cui vale la correzione ppm */
+    uint8_t cw_band;        /* CW dalla dashboard: 0 = 13 cm, 1 = 6 cm */
+    uint8_t cw_mode;        /* 0 = portante fissa, 1 = Morse */
+    int16_t cw_amp;         /* livello 20..480 */
+    uint16_t cw_s;          /* durata massima (s) */
+    uint16_t cw_pause_s;    /* Morse: pausa tra le ripetizioni */
+    uint16_t cw_carrier_s;  /* Morse: portante dopo il testo (0 = nessuna) */
+    uint8_t rsv3[2];
+    char cw_text[48];       /* Morse: A-Z 0-9 spazio / ? . , = - + */
 } pdx_bcn_cfg_t;
 
 void pdx_bcn_defaults(pdx_bcn_cfg_t *c);
@@ -52,10 +63,12 @@ bool pdx_bcn_wait(unsigned s);
  *   RUN   TX di una banda, poi riavvio in PAUSE (o in CONFIG se fermato con BOOT)
  *   PAUSE access point e dashboard per la pausa, poi riavvio in RUN sulla banda seguente (o CONFIG se STOP)
  *   CONFIG / accensione: access point e dashboard, nessuna TX finché non arriva START (o la partenza automatica) */
-enum { PDX_BCN_BOOT_NONE = 0, PDX_BCN_BOOT_RUN = 1, PDX_BCN_BOOT_PAUSE = 2, PDX_BCN_BOOT_CONFIG = 3, PDX_BCN_BOOT_LAB = 4 };  /* LAB: niente access point, comandi di prova disponibili */
+enum { PDX_BCN_BOOT_NONE = 0, PDX_BCN_BOOT_RUN = 1, PDX_BCN_BOOT_PAUSE = 2, PDX_BCN_BOOT_CONFIG = 3, PDX_BCN_BOOT_LAB = 4,  /* LAB: niente access point, comandi di prova disponibili */
+       PDX_BCN_BOOT_CW = 5 };  /* CW/Morse della configurazione senza access point, poi CONFIG */
 void pdx_bcn_reboot(int mode, int band, uint32_t cycle);
 int pdx_bcn_boot_mode(int *band, uint32_t *cycle);     /* modo del riavvio software (NONE dopo un'accensione) */
 void pdx_bcn_request_run(int start_band, uint32_t cycle);   /* = pdx_bcn_reboot(RUN, ...) */
+void pdx_bcn_request_cw(void);                              /* = pdx_bcn_reboot(CW, ...): portante/Morse dalla dashboard */
 /* TX della banda band (riavvia sempre alla fine: PAUSE o CONFIG) */
 void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int band, uint32_t cycle);
 /* uscita della banda (0 = 13 cm, 1 = 6 cm): commutatore d'antenna, GPIO di banda e PTT; tx = false: a riposo */

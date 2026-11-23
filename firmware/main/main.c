@@ -33,7 +33,7 @@
 #include "rf_c5.h"
 #include "chip_temp.h"
 
-#define FW_VERSION "C5-B5b-XCS2"
+#define FW_VERSION "C5-B6-CWWEB"
 
 static bool tx_armed;
 
@@ -45,6 +45,51 @@ static void cw_end(const char *why)
     if (cw_cfg) pdx_bcn_route(cw_cfg, cw_band, false);
     pdx_led_idle();
     printf("CW fine: %s\n", why);
+}
+
+/* CW/Morse sulla banda b con frequenza, quarzo, antenna, GPIO e PTT della configurazione (seriale e dashboard) */
+static const char *cw_launch(const pdx_bcn_cfg_t *c, int b, const pdx_cw_job_t *job, bool dry)
+{
+    const uint32_t fk = b == 0 ? c->f13_khz : c->f6_khz;
+    pdx_rf_set_ppm(c->ppm_x100);
+    if (!pdx_rf_tune_khz(fk)) return "frequenza";
+    if (!dry) pdx_bcn_route(c, b, true);
+    cw_cfg = dry ? NULL : c;
+    cw_band = b;
+    const double lvl = 20.0 * log10((double)pdx_rf_cw_amp() / 480.0);
+    if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
+    const char *e = pdx_rf_cw_start(job, cw_end);
+    if (e) { pdx_bcn_route(c, b, false); pdx_led_idle(); return e; }
+    if (job->text[0])
+        printf("TX CW MORSE %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d %u wpm pausa %u s portante %u s "
+               "manipolazione %s testo \"%s\" max %u s (stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u,
+               fk % 1000u, pdx_rf_prog_khz(), pdx_rf_cw_amp(), job->wpm, job->pause_s, job->carrier_s,
+               pdx_rf_cw_key_pa() ? "PA" : "DAC", job->text, job->max_s);
+    else
+        printf("TX CW portante %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d (%.1f dB) max %u s "
+               "(stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u, fk % 1000u,
+               pdx_rf_prog_khz(), pdx_rf_cw_amp(), lvl, job->max_s);
+    if (dry) printf("(A SECCO: nessuna RF)\n");
+    return NULL;
+}
+
+/* avvio in CW dalla dashboard: niente access point, CW o Morse della configurazione salvata, poi configurazione */
+static void cw_boot(const pdx_bcn_cfg_t *c)
+{
+    if (pdx_bcn_stop_gpio_active()) { printf("CW GPIO STOP a massa: nessuna TX\n"); pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, 0, 1); }
+    pdx_cw_job_t job = {0};
+    job.max_s = c->cw_s;
+    if (c->cw_mode) {
+        job.wpm = c->cw_wpm;
+        job.pause_s = c->cw_pause_s;
+        job.carrier_s = c->cw_carrier_s;
+        snprintf(job.text, sizeof job.text, "%s", c->cw_text);
+    }
+    pdx_rf_cw_set_amp(c->cw_amp);
+    const char *e = cw_launch(c, c->cw_band ? 1 : 0, &job, false);
+    if (e) printf("CW ERR %s\n", e);
+    else while (pdx_rf_cw_active()) vTaskDelay(pdMS_TO_TICKS(100));
+    pdx_bcn_reboot(PDX_BCN_BOOT_CONFIG, c->cw_band ? 1 : 0, 1);
 }
 
 extern int _bss_end, _data_end, _iram_end;
@@ -136,6 +181,7 @@ void app_main(void)
     int rb = 0;
     uint32_t rc = 1;
     const int bm = pdx_bcn_boot_mode(&rb, &rc);
+    if (bm == PDX_BCN_BOOT_CW) cw_boot(&bcfg);           /* non ritorna: riavvia in CONFIG */
     if (bm == PDX_BCN_BOOT_RUN) {                        /* TX di una banda (radio pulita dal riavvio) */
         pdx_bcn_segment(&bcfg, rb, rc);                   /* non ritorna: riavvia in PAUSA o CONFIG */
     } else if (bm == PDX_BCN_BOOT_PAUSE) {               /* pausa con la dashboard */
@@ -236,10 +282,10 @@ void app_main(void)
         else if (!strcmp(cmd, "LAB")) pdx_bcn_reboot(PDX_BCN_BOOT_LAB, 0, 1);
         else if (!strcmp(cmd, "CONFIG")) { pdx_bcn_print(&bcfg); printf("OK config\n"); }
         else if (!strcmp(cmd, "SET")) {
-            char key[16] = {0}, val[40] = {0};
+            char key[16] = {0}, val[64] = {0};
             pdx_bcn_cfg_t t = bcfg;
             const char *cf = NULL;
-            if (sscanf(p, "%*s %15s %39s", key, val) == 2 && pdx_bcn_set(&t, key, val) && !(cf = pdx_bcn_check(&t))) {
+            if (sscanf(p, "%*s %15s %63[^\r\n]", key, val) == 2 && pdx_bcn_set(&t, key, val) && !(cf = pdx_bcn_check(&t))) {
                 bcfg = t;
                 pdx_bcn_apply(&bcfg);
                 pdx_bcn_print(&bcfg);
@@ -503,26 +549,8 @@ void app_main(void)
                     if (n >= 2 && x1) pdx_rf_cw_set_amp((int)x1);
                     job.max_s = n >= 3 && x2 ? x2 : 600;
                 }
-                const int b = band == 13 ? 0 : 1;
-                const uint32_t fk = b == 0 ? bcfg.f13_khz : bcfg.f6_khz;
-                pdx_rf_set_ppm(bcfg.ppm_x100);
-                if (!pdx_rf_tune_khz(fk)) { printf("ERR frequenza %" PRIu32 " kHz\n", fk); continue; }
-                if (!cwdry) pdx_bcn_route(&bcfg, b, true);
-                cw_cfg = cwdry ? NULL : &bcfg; cw_band = b;
-                const double lvl = 20.0 * log10((double)pdx_rf_cw_amp() / 480.0);
-                if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
-                const char *e = pdx_rf_cw_start(&job, cw_end);
-                if (e) { pdx_bcn_route(&bcfg, b, false); pdx_led_idle(); printf("ERR cw %s\n", e); continue; }
-                if (morse)
-                    printf("TX CW MORSE %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d %u wpm pausa %u s portante %u s "
-                           "manipolazione %s testo \"%s\" (stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u,
-                           fk % 1000u, pdx_rf_prog_khz(), pdx_rf_cw_amp(), job.wpm, job.pause_s, job.carrier_s,
-                           pdx_rf_cw_key_pa() ? "PA" : "DAC", job.text);
-                else
-                    printf("TX CW portante %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d (%.1f dB) max %u s "
-                           "(stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u, fk % 1000u,
-                           pdx_rf_prog_khz(), pdx_rf_cw_amp(), lvl, job.max_s);
-                if (cwdry) printf("(A SECCO: nessuna RF)\n");
+                const char *e = cw_launch(&bcfg, band == 13 ? 0 : 1, &job, cwdry);
+                if (e) { printf("ERR cw %s\n", e); continue; }
                 printf("OK cw\n");
             } else printf("ERR uso: CW [ON|MORSE|OFF|AMP|KEY]\n");
         }

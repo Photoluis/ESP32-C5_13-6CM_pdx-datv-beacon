@@ -43,15 +43,18 @@ static esp_err_t h_index(httpd_req_t *r)
 
 static esp_err_t send_status(httpd_req_t *r)
 {
-    char j[720];
+    char j[1100];
     const pdx_bcn_cfg_t *c = cfg;
     snprintf(j, sizeof j,
              "{\"fw\":\"%s\",\"state\":\"%s\",\"ssid\":\"%s\",\"call\":\"%s\",\"appass\":\"%s\",\"f13\":%" PRIu32 ",\"f6\":%" PRIu32
              ",\"sr\":%" PRIu32 ",\"amp\":%" PRIi32 ",\"tx\":%u,\"pause\":%u,\"wait\":%u,\"bands\":%u,\"auto\":%u,"
-             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d,\"gpiostop\":%d,\"stopnow\":%u,\"ppm\":%d}",
+             "\"ant13\":%u,\"ant6\":%u,\"gpio13\":%d,\"gpio6\":%d,\"gpiopol\":%u,\"gpioptt\":%d,\"gpiostop\":%d,\"stopnow\":%u,\"ppm\":%d,"
+             "\"xc\":%u,\"xcs2\":%u,\"xcref\":%d,\"cwband\":%u,\"cwmode\":%u,\"cwamp\":%d,\"cws\":%u,\"cwwpm\":%u,"
+             "\"cwpause\":%u,\"cwcarrier\":%u,\"cwtext\":\"%s\"}",
              fw_version, state_txt, PDX_WEB_SSID, c->call, c->ap_pass, c->f13_khz, c->f6_khz, c->sr, c->amp, c->tx_s,
              c->pause_s, c->wait_s, c->bands, c->auto_tx, c->ant13, c->ant6, c->gpio13, c->gpio6, c->gpio_pol, c->gpio_ptt,
-             c->gpio_stop, pdx_bcn_stop_gpio_active() ? 1u : 0u, c->ppm_x100);
+             c->gpio_stop, pdx_bcn_stop_gpio_active() ? 1u : 0u, c->ppm_x100, c->xc & 1u, (c->xc >> 1) & 1u, c->xc_ref_x10,
+             c->cw_band ? 6u : 13u, c->cw_mode, c->cw_amp, c->cw_s, c->cw_wpm, c->cw_pause_s, c->cw_carrier_s, c->cw_text);
     httpd_resp_set_type(r, "application/json");
     return httpd_resp_sendstr(r, j);
 }
@@ -72,7 +75,7 @@ static void urldecode(char *s)
 
 static esp_err_t h_set(httpd_req_t *r)
 {
-    char body[512];
+    char body[1024];
     const int n = httpd_req_recv(r, body, sizeof body - 1);
     if (n <= 0) return httpd_resp_send_err(r, HTTPD_400_BAD_REQUEST, "corpo");
     body[n] = 0;
@@ -137,6 +140,23 @@ static void restart_task(void *arg)
     pdx_bcn_request_run(0, 1);
 }
 
+static void cw_task(void *arg)
+{
+    (void)arg;
+    vTaskDelay(pdMS_TO_TICKS(400));
+    pdx_bcn_request_cw();
+}
+
+/* CW/Morse con la configurazione SALVATA (la pagina fa Applica + Salva prima): riavvio senza access point */
+static esp_err_t h_cw(httpd_req_t *r)
+{
+    printf("WEB CW START: riavvio in CW (%s)\n", cfg->cw_mode ? "Morse" : "portante");
+    pdx_web_set_state("CW START");
+    send_status(r);
+    xTaskCreate(cw_task, "rstcw", 2048, NULL, 5, NULL);
+    return ESP_OK;
+}
+
 static esp_err_t h_start(httpd_req_t *r)
 {
     printf("WEB START: riavvio e ciclo dalla banda 13 cm\n");
@@ -182,7 +202,7 @@ bool pdx_web_start(void)
         return false;
     }
     httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
-    hc.stack_size = 5120;
+    hc.stack_size = 6144;
     hc.max_uri_handlers = 8;
     hc.max_open_sockets = 3;
     hc.lru_purge_enable = true;
@@ -199,6 +219,7 @@ bool pdx_web_start(void)
         {.uri = "/api/defaults", .method = HTTP_POST, .handler = h_defaults},
         {.uri = "/api/stop", .method = HTTP_POST, .handler = h_stop},
         {.uri = "/api/start", .method = HTTP_POST, .handler = h_start},
+        {.uri = "/api/cw", .method = HTTP_POST, .handler = h_cw},
     };
     for (size_t i = 0; i < sizeof uris / sizeof uris[0]; i++) httpd_register_uri_handler(server, &uris[i]);
     client_seen = false;
@@ -219,11 +240,15 @@ void pdx_web_selftest(void)
     if (connect(s, (struct sockaddr *)&a, sizeof a) != 0) { printf("WEBTEST ERR connect %d\n", errno); close(s); return; }
     const char *q = "GET /api/status HTTP/1.0\r\n\r\n";
     send(s, q, strlen(q), 0);
-    char buf[200];
-    const int n = recv(s, buf, sizeof buf - 1, 0);
+    const int cap = 1400;                                      /* risposta intera (intestazioni + JSON), nell'heap */
+    char *buf = malloc(cap);
+    if (!buf) { close(s); printf("WEBTEST ERR memoria\n"); return; }
+    int n = 0, k;
+    while (n < cap - 1 && (k = recv(s, buf + n, cap - 1 - n, 0)) > 0) n += k;
     close(s);
-    if (n <= 0) { printf("WEBTEST ERR nessuna risposta (%d)\n", errno); return; }
+    if (n <= 0) { free(buf); printf("WEBTEST ERR nessuna risposta (%d)\n", errno); return; }
     buf[n] = 0;
     for (char *p = buf; *p; p++) if (*p == '\r' || *p == '\n') *p = ' ';
-    printf("WEBTEST OK %d byte: %.120s\n", n, buf);
+    printf("WEBTEST OK %d byte: %s\n", n, buf);
+    free(buf);
 }

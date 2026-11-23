@@ -21,12 +21,28 @@
 #include "esp_system.h"
 #include "web_c5.h"
 
-#define CFG_VER  6u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT; 5: GPIO STOP; 6: ppm */
+#define CFG_VER  7u                  /* 2: antenna e GPIO per banda; 3: password dell'access point; 4: GPIO PTT; 5: GPIO STOP; 6: ppm; 7: XC e CW */
+#define CFG_SIZE_V6 72u
 #define CFG_SIZE_V5 68u              /* blob v4/v5: fino a ap_pass compreso */
 _Static_assert(offsetof(pdx_bcn_cfg_t, ppm_x100) == CFG_SIZE_V5, "layout della configurazione v5 cambiato");
+_Static_assert(offsetof(pdx_bcn_cfg_t, xc_ref_x10) == CFG_SIZE_V6, "layout della configurazione v6 cambiato");
 #define STOP_GPIO_DEF 10             /* GPIO STOP predefinito (connettore, non di strapping) */
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
+
+static void v7_defaults(pdx_bcn_cfg_t *c)
+{
+    c->xc = 3;               /* 23/11 prove G/H: compensazione in CW e pre-centraggio DVB-S2 */
+    c->xc_ref_x10 = 700;
+    c->cw_band = 1;
+    c->cw_mode = 0;
+    c->cw_amp = 300;
+    c->cw_s = 600;
+    c->cw_wpm = 12;
+    c->cw_pause_s = 30;
+    c->cw_carrier_s = 10;
+    snprintf(c->cw_text, sizeof c->cw_text, "VVV VVV DE NOCALL");
+}
 
 void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
 {
@@ -50,6 +66,7 @@ void pdx_bcn_defaults(pdx_bcn_cfg_t *c)
     c->gpio_ptt = -1;
     c->gpio_stop = STOP_GPIO_DEF;
     snprintf(c->ap_pass, sizeof c->ap_pass, "pdxbeacon");
+    v7_defaults(c);
 }
 
 void pdx_bcn_load(pdx_bcn_cfg_t *c)
@@ -62,7 +79,13 @@ void pdx_bcn_load(pdx_bcn_cfg_t *c)
     size_t n = sizeof t;
     if (nvs_get_blob(h, "cfg", &t, &n) == ESP_OK) {
         if (t.ver == 4u && n == CFG_SIZE_V5) { t.ver = 5u; t.gpio_stop = STOP_GPIO_DEF; t.rsv[0] = 0; }   /* v4 -> v5: GPIO STOP predefinito */
-        if (t.ver == 5u && n == CFG_SIZE_V5) { t.ver = CFG_VER; t.ppm_x100 = 0; }                            /* v5 -> v6: nessuna correzione */
+        if (t.ver == 5u && n == CFG_SIZE_V5) { t.ver = 6u; t.ppm_x100 = 0; n = CFG_SIZE_V6; }             /* v5 -> v6: nessuna correzione */
+        if (t.ver == 6u && n == CFG_SIZE_V6) {                                                              /* v6 -> v7: XC e CW predefiniti */
+            t.ver = CFG_VER;
+            v7_defaults(&t);
+            snprintf(t.cw_text, sizeof t.cw_text, "VVV VVV DE %.30s", t.call);
+            n = sizeof t;
+        }
         if (t.ver == CFG_VER && n == sizeof t) *c = t;
     }
     nvs_close(h);
@@ -96,6 +119,10 @@ void pdx_bcn_print(const pdx_bcn_cfg_t *c)
     if (c->gpio_stop >= 0) snprintf(gs, sizeof gs, "GPIO%d", c->gpio_stop);
     printf("CONFIG antenna 13cm %s%s  6cm %s%s  PTT %s  GPIO esterni attivi %s  STOP %s (a massa)\n", c->ant13 ? "IPEX" : "PCB", g13,
            c->ant6 ? "IPEX" : "PCB", g6, gp, c->gpio_pol ? "alti" : "bassi", gs);
+    printf("CONFIG compensazione termica %s, pre-centraggio DVB-S2 %s, regime %d.%d C\n", c->xc & 1 ? "ON" : "OFF",
+           c->xc & 2 ? "ON" : "OFF", c->xc_ref_x10 / 10, c->xc_ref_x10 % 10);
+    printf("CONFIG CW %s %s amp %d max %u s  Morse %u wpm pausa %u s portante %u s testo \"%s\"\n", c->cw_band ? "6cm" : "13cm",
+           c->cw_mode ? "MORSE" : "portante", c->cw_amp, c->cw_s, c->cw_wpm, c->cw_pause_s, c->cw_carrier_s, c->cw_text);
 }
 
 static bool num(const char *v, long lo, long hi, long *out)
@@ -154,6 +181,36 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
         c->ppm_x100 = (int16_t)(p * 100.0 + (p < 0 ? -0.5 : 0.5));
         return true;
     }
+    if (!strcmp(key, "xc") && num(val, 0, 1, &x)) { c->xc = (uint8_t)((c->xc & ~1u) | (unsigned)x); return true; }
+    if (!strcmp(key, "xcs2") && num(val, 0, 1, &x)) { c->xc = (uint8_t)((c->xc & ~2u) | ((unsigned)x << 1)); return true; }
+    if (!strcmp(key, "xcref")) {                                 /* "70", "68.5" */
+        char *e;
+        const double t = strtod(val, &e);
+        if (e == val || *e || t < 40.0 || t > 95.0) return false;
+        c->xc_ref_x10 = (int16_t)(t * 10.0 + 0.5);
+        return true;
+    }
+    if (!strcmp(key, "cwband") && num(val, 6, 13, &x) && (x == 6 || x == 13)) { c->cw_band = x == 6; return true; }
+    if (!strcmp(key, "cwmode") && num(val, 0, 1, &x)) { c->cw_mode = (uint8_t)x; return true; }
+    if (!strcmp(key, "cwamp") && num(val, 20, 480, &x)) { c->cw_amp = (int16_t)x; return true; }
+    if (!strcmp(key, "cws") && num(val, 5, 3600, &x)) { c->cw_s = (uint16_t)x; return true; }
+    if (!strcmp(key, "cwwpm") && num(val, 5, 40, &x)) { c->cw_wpm = (uint8_t)x; return true; }
+    if (!strcmp(key, "cwpause") && num(val, 0, 3600, &x)) { c->cw_pause_s = (uint16_t)x; return true; }
+    if (!strcmp(key, "cwcarrier") && num(val, 0, 600, &x)) { c->cw_carrier_s = (uint16_t)x; return true; }
+    if (!strcmp(key, "cwtext")) {                                /* solo i caratteri del Morse (anche nel JSON senza escape) */
+        char t[sizeof c->cw_text];
+        size_t n = 0;
+        for (const char *p = val; *p; p++) {
+            const char ch = *p >= 'a' && *p <= 'z' ? (char)(*p - 32) : *p;
+            if (!((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || strchr(" /?.,=-+", ch))) return false;
+            if (n >= sizeof t - 1) return false;
+            t[n++] = ch;
+        }
+        t[n] = 0;
+        if (!n) return false;
+        memcpy(c->cw_text, t, n + 1);
+        return true;
+    }
     if (!strcmp(key, "appass")) {
         const size_t n = strlen(val);
         if (n < 8 || n >= sizeof c->ap_pass) return false;
@@ -187,7 +244,14 @@ void pdx_bcn_stop_gpio_init(const pdx_bcn_cfg_t *c)
     }
     pdx_rf_set_stop_gpio(stop_gpio);
 }
-void pdx_bcn_apply(const pdx_bcn_cfg_t *c) { pdx_bcn_stop_gpio_init(c); pdx_rf_set_ppm(c->ppm_x100); }
+void pdx_bcn_apply(const pdx_bcn_cfg_t *c)
+{
+    pdx_bcn_stop_gpio_init(c);
+    pdx_rf_set_ppm(c->ppm_x100);
+    pdx_xc_set(c->xc & 1);
+    pdx_xc_set_s2(c->xc & 2);
+    pdx_xc_set_ref((float)c->xc_ref_x10 * 0.1f);
+}
 bool pdx_bcn_stop_gpio_active(void) { return stop_gpio >= 0 && gpio_get_level((gpio_num_t)stop_gpio) == 0; }
 
 static void gpio_out(int g, bool active, uint8_t pol)
@@ -251,14 +315,15 @@ static RTC_NOINIT_ATTR bcn_rtc_t rtc_state;
 void pdx_bcn_reboot(int mode, int band, uint32_t cycle)
 {
     rtc_state = (bcn_rtc_t){.magic = RTC_MAGIC, .cycle = cycle, .band = band, .mode = mode};
-    static const char *nm[] = {"", "TX", "PAUSA", "CONFIG", "LAB"};
-    printf("BEACON riavvio -> %s (banda %s, ciclo %" PRIu32 ")\n", nm[(unsigned)mode <= 4u ? mode : 0], band ? "6 cm" : "13 cm", cycle);
+    static const char *nm[] = {"", "TX", "PAUSA", "CONFIG", "LAB", "CW"};
+    printf("BEACON riavvio -> %s (banda %s, ciclo %" PRIu32 ")\n", nm[(unsigned)mode <= 5u ? mode : 0], band ? "6 cm" : "13 cm", cycle);
     fflush(stdout);
     vTaskDelay(pdMS_TO_TICKS(100));
     esp_restart();
 }
 
 void pdx_bcn_request_run(int start_band, uint32_t cycle) { pdx_bcn_reboot(PDX_BCN_BOOT_RUN, start_band, cycle); }
+void pdx_bcn_request_cw(void) { pdx_bcn_reboot(PDX_BCN_BOOT_CW, 0, 0); }
 
 int pdx_bcn_boot_mode(int *band, uint32_t *cycle)
 {
