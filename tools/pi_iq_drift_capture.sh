@@ -2,7 +2,7 @@
 # ESP32-C5_13-6CM_pdx-datv-beacon (IZ7PDX, GPL-3.0) - registra la frequenza della portante con la Pluto, senza SPECTRUM HD.
 # Sul Pi: bash pi_iq_drift_capture.sh SECONDI [LO_HZ]  -> /tmp/pd4pdx_exp_c5iq/<epoch>.bin (65536 campioni IQ int16 a 3 MS/s)
 # Solo ricezione. Alla fine rimette la Pluto come l'ha trovata (LO, campionamento, banda).
-U=ip:192.168.3.1
+U=${PLUTO_URI:-ip:192.168.2.1}        # indirizzo della Pluto (predefinito di fabbrica; altrimenti PLUTO_URI=ip:x.x.x.x)
 SEC=${1:-330}
 LO=${2:-5749900000}
 D=/tmp/pd4pdx_exp_c5iq

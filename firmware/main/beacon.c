@@ -30,7 +30,7 @@ _Static_assert(offsetof(pdx_bcn_cfg_t, xc_ref_x10) == CFG_SIZE_V6, "layout della
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
 
-/* 23/11: provati in RF 333 e 125 kS; 250, 100 e 66 kS trasmessi bene (ricezione da verificare); 500 kS: il produttore
+/* 23/11: provati in RF 333, 250 e 125 kS; 100 e 66 kS trasmessi bene (ricezione da verificare); 500 kS: il produttore
  * non regge (in sviluppo); 33 kS: con l'audio non resta posto al video */
 static bool sr_ok(uint32_t sr) { return sr == 66000u || sr == 100000u || sr == 125000u || sr == 250000u || sr == 333000u; }
 

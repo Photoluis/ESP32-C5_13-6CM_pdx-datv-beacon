@@ -15,9 +15,14 @@ Dashboard in 12 languages · License GPL-3.0
 
 *The ESP32-C5-Zero on the bench (blue LED = TX on 6 cm, wide-band antenna on IPEX) and the Pd4Pdx receiving it at 5750 MHz.*
 
+<table><tr><th width="33%">333 kS</th><th width="33%">250 kS</th><th width="33%">125 kS</th></tr>
+<tr><td><img src="docs/img/pd4pdx_hdmi_6cm_333ks.jpg" width="100%" alt="333 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_250ks.jpg" width="100%" alt="250 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_125ks.jpg" width="100%" alt="125 kS"></td></tr></table>
+
+*6 cm at three symbol rates, received with the Pd4Pdx: 333 kS MER 23.7 dB, 250 kS MER 22.0 dB, 125 kS MER 20.5 dB, all with LOCK and VBER 0 (125 kS with the lighter test card for low symbol rates).*
+
 ## What it does
 
-* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **333 / 250 / 125 / 100 / 66 kS** (tested on reception: 333 and 125 kS; 250, 100 and 66 kS transmitted correctly but reception not yet verified; 500 kS in development), with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
+* Generates a **DVB-S2 QPSK 3/4** signal (normal frames, pilots) at **333 / 250 / 125 / 100 / 66 kS** (tested on reception: 333, 250 and 125 kS; 100 and 66 kS transmitted correctly but reception not yet verified; 500 kS in development), with the MPEG transport stream (H.265 video + AAC audio test card, SDT with your callsign) **built live on the chip**.
 * Transmits alternately on **13 cm (2300–2450 MHz)** and **6 cm (5650–5850 MHz)** in a beacon cycle: TX 13 cm → pause → TX 6 cm → pause.
 * Runs on a **Waveshare ESP32-C5-Zero** (ESP32-C5, single RISC-V core, 4 MB flash, no PSRAM). No external DAC, no FPGA.
 * **Web dashboard** on its own access point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 languages: callsign, frequencies, symbol rate, level, antenna per band (PCB or IPEX), GPIOs for external relays / PTT, cycle timing, **crystal correction in ppm** with a calculator.
@@ -51,6 +56,8 @@ The ESP32-C5 radio has an internal sample-replay engine (used by Espressif for c
 The output level is a few milliwatts: an external filter and amplifier are needed for real use.
 
 ## Build and flash
+
+**Easiest way: install from the browser** (Chrome or Edge on a computer, no ESP-IDF): **[web installer](https://photoluis.github.io/ESP32-C5_13-6CM_pdx-datv-beacon/install/)**. It writes the firmware and both test cards. To build it yourself:
 
 Requires **ESP-IDF v6.1** (target `esp32c5`).
 
@@ -105,7 +112,7 @@ First project phase completed (November 2026). Tested on air: DVB-S2 on 13 and 6
 23 November 2026: CW / Morse from the dashboard and crystal thermal compensation, also tested on air; 125 kS received with picture (LOCK, MER 23.5 dB, VBER 0).
 
 Next steps:
-* reception tests at 250, 100 and 66 kS; 500 kS;
+* reception tests at 100 and 66 kS; 500 kS;
 * 1000 kS symbol rate;
 * SPI link to an ESP32-S3 (dashboard during TX, cross-band transponder, streaming from a phone).
 

@@ -1,0 +1,17 @@
+{
+  "name": "ESP32-C5_13-6CM_pdx-datv-beacon",
+  "version": "C5-B6-CWWEB",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C5",
+      "parts": [
+        { "path": "firmware/bootloader.bin", "offset": 8192 },
+        { "path": "firmware/partition-table.bin", "offset": 32768 },
+        { "path": "firmware/pdx_c5_beacon.bin", "offset": 65536 },
+        { "path": "firmware/testcard_333k.bin", "offset": 2686976 },
+        { "path": "firmware/testcard_low_125k.bin", "offset": 3407872 }
+      ]
+    }
+  ]
+}

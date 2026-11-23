@@ -15,9 +15,14 @@ Panel en 12 idiomas · Licencia GPL-3.0
 
 *El ESP32-C5-Zero en el banco (LED azul = TX en 6 cm, antena de banda ancha en el IPEX) y el Pd4Pdx recibiéndolo en 5750 MHz.*
 
+<table><tr><th width="33%">333 kS</th><th width="33%">250 kS</th><th width="33%">125 kS</th></tr>
+<tr><td><img src="docs/img/pd4pdx_hdmi_6cm_333ks.jpg" width="100%" alt="333 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_250ks.jpg" width="100%" alt="250 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_125ks.jpg" width="100%" alt="125 kS"></td></tr></table>
+
+*6 cm a tres symbol rates, recibidos con el Pd4Pdx: 333 kS MER 23,7 dB, 250 kS MER 22,0 dB, 125 kS MER 20,5 dB, todos con LOCK y VBER 0 (125 kS con la carta de ajuste ligera para SR bajos).*
+
 ## Qué hace
 
-* Genera una señal **DVB-S2 QPSK 3/4** (tramas normales, pilotos) a **333 / 250 / 125 / 100 / 66 kS** (probados en recepción: 333 y 125 kS; 250, 100 y 66 kS transmitidos correctamente pero recepción aún por verificar; 500 kS en desarrollo), con el transport stream MPEG (carta de ajuste en vídeo H.265 + audio AAC, SDT con tu indicativo) **construido en tiempo real en el chip**.
+* Genera una señal **DVB-S2 QPSK 3/4** (tramas normales, pilotos) a **333 / 250 / 125 / 100 / 66 kS** (probados en recepción: 333, 250 y 125 kS; 100 y 66 kS transmitidos correctamente pero recepción aún por verificar; 500 kS en desarrollo), con el transport stream MPEG (carta de ajuste en vídeo H.265 + audio AAC, SDT con tu indicativo) **construido en tiempo real en el chip**.
 * Transmite alternando **13 cm (2300–2450 MHz)** y **6 cm (5650–5850 MHz)** en un ciclo de baliza: TX 13 cm → pausa → TX 6 cm → pausa.
 * Funciona en una **Waveshare ESP32-C5-Zero** (ESP32-C5, un solo núcleo RISC-V, flash de 4 MB, sin PSRAM). Sin DAC externo y sin FPGA.
 * **Panel web** en su propio punto de acceso (`C5_13-6CM_BEACON`, http://192.168.4.1) en 12 idiomas: indicativo, frecuencias, symbol rate, nivel, antena por banda (PCB o IPEX), GPIO para relés externos / PTT, tiempos del ciclo, **corrección del cristal en ppm** con calculadora.
@@ -51,6 +56,8 @@ La radio del ESP32-C5 tiene un motor interno que reproduce muestras (Espressif l
 El nivel de salida es de pocos milivatios: para el uso real hacen falta un filtro y un amplificador externos.
 
 ## Compilar y grabar
+
+**La forma más sencilla: instalación desde el navegador** (Chrome o Edge en un ordenador, sin ESP-IDF): **[instalador web](https://photoluis.github.io/ESP32-C5_13-6CM_pdx-datv-beacon/install/)**. Graba el firmware y las dos cartas de ajuste. Para compilarlo uno mismo:
 
 Requiere **ESP-IDF v6.1** (target `esp32c5`).
 
@@ -105,7 +112,7 @@ Primera fase del proyecto terminada (noviembre de 2026). Probado en el aire: DVB
 23 de noviembre de 2026: CW / Morse desde el panel y compensación térmica del cristal, probadas también en el aire; 125 kS recibido con imagen (LOCK, MER 23,5 dB, VBER 0).
 
 Próximos pasos:
-* pruebas de recepción a 250, 100 y 66 kS; 500 kS;
+* pruebas de recepción a 100 y 66 kS; 500 kS;
 * symbol rate de 1000 kS;
 * enlace SPI con un ESP32-S3 (panel durante la TX, transpondedor de banda cruzada, streaming desde el teléfono).
 

@@ -15,9 +15,14 @@ Dashboard in 12 Sprachen · Lizenz GPL-3.0
 
 *Der ESP32-C5-Zero am Messplatz (blaue LED = Senden auf 6 cm, Breitbandantenne am IPEX) und der Pd4Pdx beim Empfang auf 5750 MHz.*
 
+<table><tr><th width="33%">333 kS</th><th width="33%">250 kS</th><th width="33%">125 kS</th></tr>
+<tr><td><img src="docs/img/pd4pdx_hdmi_6cm_333ks.jpg" width="100%" alt="333 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_250ks.jpg" width="100%" alt="250 kS"></td><td><img src="docs/img/pd4pdx_hdmi_6cm_125ks.jpg" width="100%" alt="125 kS"></td></tr></table>
+
+*6 cm mit drei Symbolraten, empfangen mit dem Pd4Pdx: 333 kS MER 23,7 dB, 250 kS MER 22,0 dB, 125 kS MER 20,5 dB, alle mit LOCK und VBER 0 (125 kS mit dem leichten Testbild für niedrige Symbolraten).*
+
 ## Was sie kann
 
-* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **333 / 250 / 125 / 100 / 66 kS** (im Empfang geprüft: 333 und 125 kS; 250, 100 und 66 kS werden korrekt gesendet, der Empfang ist noch nicht geprüft; 500 kS in Entwicklung); der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
+* Erzeugt ein **DVB-S2-Signal QPSK 3/4** (Normal-Frames, Piloten) mit **333 / 250 / 125 / 100 / 66 kS** (im Empfang geprüft: 333, 250 und 125 kS; 100 und 66 kS werden korrekt gesendet, der Empfang ist noch nicht geprüft; 500 kS in Entwicklung); der MPEG-Transportstrom (Testbild in H.265 + AAC-Ton, SDT mit deinem Rufzeichen) wird **in Echtzeit auf dem Chip erzeugt**.
 * Sendet im Bakenzyklus abwechselnd auf **13 cm (2300–2450 MHz)** und **6 cm (5650–5850 MHz)**: TX 13 cm → Pause → TX 6 cm → Pause.
 * Läuft auf einem **Waveshare ESP32-C5-Zero** (ESP32-C5, ein RISC-V-Kern, 4 MB Flash, kein PSRAM). Kein externer DAC, kein FPGA.
 * **Web-Dashboard** über einen eigenen Access Point (`C5_13-6CM_BEACON`, http://192.168.4.1) in 12 Sprachen: Rufzeichen, Frequenzen, Symbolrate, Pegel, Antenne pro Band (PCB oder IPEX), GPIOs für externe Relais / PTT, Zykluszeiten, **Quarzkorrektur in ppm** mit Rechner.
@@ -51,6 +56,8 @@ Das Funkteil des ESP32-C5 besitzt eine interne Abspieleinheit für Abtastwerte (
 Die Ausgangsleistung liegt bei wenigen Milliwatt: für den echten Betrieb sind ein externes Filter und ein Verstärker nötig.
 
 ## Bauen und flashen
+
+**Am einfachsten: Installation im Browser** (Chrome oder Edge auf einem Computer, ohne ESP-IDF): **[Web-Installer](https://photoluis.github.io/ESP32-C5_13-6CM_pdx-datv-beacon/install/)**. Er schreibt die Firmware und beide Testbilder. Selbst bauen:
 
 Benötigt **ESP-IDF v6.1** (Ziel `esp32c5`).
 
@@ -105,7 +112,7 @@ Erste Projektphase abgeschlossen (November 2026). Auf Sendung getestet: DVB-S2 a
 23. November 2026: CW / Morse aus dem Dashboard und thermische Quarzkompensation, auch on air erprobt; 125 kS mit Bild empfangen (LOCK, MER 23,5 dB, VBER 0).
 
 Nächste Schritte:
-* Empfangstests bei 250, 100 und 66 kS; 500 kS;
+* Empfangstests bei 100 und 66 kS; 500 kS;
 * Symbolrate 1000 kS;
 * SPI-Verbindung zu einem ESP32-S3 (Dashboard während der Sendung, Crossband-Transponder, Streaming vom Smartphone).
 

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C5 DATV Beacon installer</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.5.2/dist/web/install-button.js?module"></script>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--line:#30363d;--fg:#e6edf3;--mut:#8b949e;--acc:#f0b429;--grn:#57ab5a;--red:#e5534b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:22px;margin:0 0 4px;word-break:break-word}
+.sub{color:var(--mut);margin:0 0 20px}
+.lang{float:right}
+.lang button{background:none;border:1px solid var(--acc);color:var(--acc);border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:700}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin:14px 0}
+.card h2{font-size:16px;color:var(--acc);margin:0 0 8px}
+ol,ul{margin:6px 0 0;padding-left:22px}
+li{margin:0 0 6px}
+code{background:#0b0f14;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:14px}
+.warn{border-color:var(--red)}
+.warn h2{color:var(--red)}
+.install{text-align:center;padding:22px}
+esp-web-install-button button[slot=activate]{background:var(--grn);color:#0d1117;border:0;border-radius:8px;padding:13px 28px;font-weight:700;font-size:17px;cursor:pointer}
+table{border-collapse:collapse;width:100%;font-size:14px}
+td{border-top:1px solid var(--line);padding:5px 6px}
+td:first-child{color:var(--mut);white-space:nowrap}
+a{color:var(--acc)}
+[data-l]{display:none}
+html[lang=en] [data-l=en],html[lang=it] [data-l=it]{display:revert}
+</style>
+</head>
+<body>
+<main>
+  <div class="lang"><button id="sw" type="button">IT / EN</button></div>
+  <h1>ESP32-C5_13-6CM_pdx-datv-beacon</h1>
+  <p class="sub" data-l="en">Install the DVB-S2 beacon (13 / 6 cm) on a Waveshare ESP32-C5-Zero from the browser, without ESP-IDF.</p>
+  <p class="sub" data-l="it">Installa il beacon DVB-S2 (13 / 6 cm) su una Waveshare ESP32-C5-Zero dal browser, senza ESP-IDF.</p>
+
+  <div class="card install">
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate"><span data-l="en">Connect and install</span><span data-l="it">Collega e installa</span></button>
+      <span slot="unsupported"><span data-l="en">Your browser does not support Web Serial: use Chrome or Edge on a computer.</span><span data-l="it">Il browser non supporta Web Serial: usa Chrome o Edge su un computer.</span></span>
+      <span slot="not-allowed"><span data-l="en">Web Serial needs a secure page (https or localhost).</span><span data-l="it">Web Serial richiede una pagina sicura (https o localhost).</span></span>
+    </esp-web-install-button>
+  </div>
+
+  <div class="card">
+    <h2 data-l="en">How to</h2><h2 data-l="it">Procedura</h2>
+    <ol data-l="en">
+      <li>Connect the ESP32-C5-Zero to the computer with a USB-C <b>data</b> cable.</li>
+      <li>Press <b>Connect and install</b> and choose the port of the board (USB JTAG/serial debug unit).</li>
+      <li>For a first installation tick <b>Erase device</b>; for an update you can keep it unticked (the settings in NVS stay).</li>
+      <li>At the end press the board's reset button (or unplug and plug it again).</li>
+      <li>Connect a phone to the Wi-Fi <code>C5_13-6CM_BEACON</code> (password <code>pdxbeacon</code>) and open <code>http://192.168.4.1</code>.</li>
+    </ol>
+    <ol data-l="it">
+      <li>Collega la ESP32-C5-Zero al computer con un cavo USB-C <b>dati</b>.</li>
+      <li>Premi <b>Collega e installa</b> e scegli la porta della scheda (USB JTAG/serial debug unit).</li>
+      <li>Alla prima installazione spunta <b>Erase device</b>; per un aggiornamento puoi lasciarla vuota (le impostazioni in NVS restano).</li>
+      <li>Alla fine premi il tasto di reset della scheda (o scollegala e ricollegala).</li>
+      <li>Collega un telefono al Wi-Fi <code>C5_13-6CM_BEACON</code> (password <code>pdxbeacon</code>) e apri <code>http://192.168.4.1</code>.</li>
+    </ol>
+    <p data-l="en">If the port does not appear: hold BOOT, press and release RESET, release BOOT, then try again.</p>
+    <p data-l="it">Se la porta non compare: tieni premuto BOOT, premi e rilascia RESET, rilascia BOOT e riprova.</p>
+  </div>
+
+  <div class="card">
+    <h2 data-l="en">What is written</h2><h2 data-l="it">Cosa viene scritto</h2>
+    <table>
+      <tr><td>0x2000</td><td>bootloader</td></tr>
+      <tr><td>0x8000</td><td><span data-l="en">partition table</span><span data-l="it">tabella delle partizioni</span></td></tr>
+      <tr><td>0x10000</td><td><span data-l="en">beacon firmware</span><span data-l="it">firmware del beacon</span> (C5-B6-CWWEB)</td></tr>
+      <tr><td>0x290000</td><td><span data-l="en">neutral test card for 333 kS (callsign and frequency overlaid by the C5)</span><span data-l="it">monoscopio neutro per 333 kS (nominativo e frequenza in sovrimpressione dalla C5)</span></td></tr>
+      <tr><td>0x340000</td><td><span data-l="en">lighter test card for the symbol rates below 333 kS</span><span data-l="it">monoscopio leggero per i symbol rate sotto i 333 kS</span></td></tr>
+    </table>
+  </div>
+
+  <div class="card warn">
+    <h2 data-l="en">Amateur radio only</h2><h2 data-l="it">Solo per radioamatori</h2>
+    <p data-l="en">The board transmits on 13 cm and 6 cm only after START from the dashboard (automatic start is off). Transmitting requires an amateur licence and must respect your national band plan and power limits.</p>
+    <p data-l="it">La scheda trasmette su 13 e 6 cm solo dopo START dalla dashboard (la partenza automatica è spenta). Per trasmettere serve la licenza di radioamatore, nel rispetto del piano di banda e dei limiti di potenza del tuo paese.</p>
+  </div>
+
+  <p class="sub"><a href="https://github.com/Photoluis/ESP32-C5_13-6CM_pdx-datv-beacon">GitHub</a> · GPL-3.0 · IZ7PDX</p>
+</main>
+<script>
+(function(){
+  var l = "en";
+  try { l = localStorage.getItem("lang") || ((navigator.language || "en").slice(0, 2) === "it" ? "it" : "en"); } catch (e) {}
+  function set(x){ document.documentElement.lang = x; try { localStorage.setItem("lang", x); } catch (e) {} }
+  set(l === "it" ? "it" : "en");
+  document.getElementById("sw").onclick = function(){ set(document.documentElement.lang === "it" ? "en" : "it"); };
+})();
+</script>
+</body>
+</html>
