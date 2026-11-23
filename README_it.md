@@ -8,9 +8,9 @@ Dashboard in 11 lingue · Licenza GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 a 2375 MHz ricevuto con LOCK, MER 20,9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 a 5750 MHz ricevuto con LOCK, MER 20,8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![DVB-S2 a 2375 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 a 5750 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Le due bande ricevute dal Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, monoscopio H.265 + AAC, MER ~21 dB, VBER 0.*
+*Monoscopio neutro con nominativo e frequenza impostati dalla dashboard. 13 cm ricevuti da un Portsdown 4 con Pluto (schermo 7", MER 20,4 dB), 6 cm dal Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
 
 ## Cosa fa
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-Il beacon ha bisogno anche dei due monoscopi già codificati in flash (6 cm a `0x290000`, 13 cm a `0x320000`). **I monoscopi neutri e un'immagine pronta da caricare saranno pubblicati con la prima release**; si generano con lo strumento `make_es` del progetto [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).
+Il beacon ha bisogno anche del monoscopio neutro in flash a `0x290000` (un solo file per le due bande, circa 760 KB). Si genera sul PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 e il font libero DejaVu); nominativo e frequenza **non** sono nel file: li sovrimprime la C5 dalle impostazioni della dashboard.
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## Primo utilizzo
 
@@ -74,7 +80,6 @@ Prima fase del progetto completata (novembre 2026). Provato in aria: DVB-S2 a 13
 
 Prossimi passi:
 * compensazione con la temperatura della deriva del quarzo durante la TX (~1,6 ppm/min da freddo);
-* monoscopio con il nominativo in sovrimpressione dalla dashboard;
 * symbol rate 1000 kS;
 * collegamento SPI con una ESP32-S3 (dashboard durante la TX, transponder in banda incrociata, streaming dal telefono).
 

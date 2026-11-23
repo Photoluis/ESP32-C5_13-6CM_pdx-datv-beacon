@@ -8,9 +8,9 @@ Dashboard in 11 Sprachen · Lizenz GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 auf 2375 MHz mit LOCK empfangen, MER 20,9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 auf 5750 MHz mit LOCK empfangen, MER 20,8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Beide Bänder empfangen mit dem Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, Testbild H.265 + AAC, MER ~21 dB, VBER 0.*
+*Neutrales Testbild mit Rufzeichen und Frequenz aus dem Dashboard. 13 cm empfangen mit einem Portsdown 4 mit Pluto (7"-Bildschirm, MER 20,4 dB), 6 cm mit dem Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
 
 ## Was sie kann
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-Die Bake braucht außerdem die beiden vorcodierten Testbilder im Flash (6 cm bei `0x290000`, 13 cm bei `0x320000`). **Neutrale Testbilder und ein fertiges Flash-Abbild erscheinen mit dem ersten Release**; sie werden mit dem Werkzeug `make_es` des Projekts [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon) erzeugt.
+Die Bake braucht außerdem das neutrale Testbild im Flash bei `0x290000` (eine Datei für beide Bänder, etwa 760 KB). Es wird am PC mit `tools/monoscope/make_es_c5.py` erzeugt (ffmpeg mit libx265 und die freie Schrift DejaVu); Rufzeichen und Frequenz stehen **nicht** in der Datei: der C5 blendet sie aus den Dashboard-Einstellungen ein.
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## Erste Inbetriebnahme
 
@@ -74,7 +80,6 @@ Erste Projektphase abgeschlossen (November 2026). Auf Sendung getestet: DVB-S2 a
 
 Nächste Schritte:
 * Temperaturkompensation der Quarzdrift während der Sendung (~1,6 ppm/min aus dem kalten Zustand);
-* Testbild mit eingeblendetem Rufzeichen aus dem Dashboard;
 * Symbolrate 1000 kS;
 * SPI-Verbindung zu einem ESP32-S3 (Dashboard während der Sendung, Crossband-Transponder, Streaming vom Smartphone).
 

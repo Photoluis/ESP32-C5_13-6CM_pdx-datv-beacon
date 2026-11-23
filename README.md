@@ -8,9 +8,9 @@ Dashboard in 11 languages · License GPL-3.0
 
 | 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
 |---|---|
-| ![DVB-S2 at 2375 MHz received with LOCK, MER 20.9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 at 5750 MHz received with LOCK, MER 20.8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![DVB-S2 at 2375 MHz with the callsign and frequency overlaid, LOCK, MER 20.4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 at 5750 MHz with the callsign and frequency overlaid, LOCK, MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Both bands received by the Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, H.265 + AAC test card, MER ~21 dB, VBER 0.*
+*Neutral test card with callsign and frequency set from the dashboard. 13 cm received by a Portsdown 4 with Pluto (7" screen, MER 20.4 dB), 6 cm by the Pd4Pdx (Pluto + leandvb, MER 22.8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
 
 ## What it does
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-The beacon also needs the two pre-encoded test cards in flash (6 cm at `0x290000`, 13 cm at `0x320000`). **Neutral test cards and a ready-to-flash image will be published with the first release**; they are generated with the `make_es` tool of the [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon) project.
+The beacon also needs the neutral test card in flash at `0x290000` (one file for both bands, about 760 KB). It is generated on the PC with `tools/monoscope/make_es_c5.py` (ffmpeg with libx265 and the free DejaVu font); the callsign and the frequency are **not** in the file: the C5 overlays them from the dashboard settings.
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## First use
 
@@ -74,7 +80,6 @@ First project phase completed (November 2026). Tested on air: DVB-S2 on 13 and 6
 
 Next steps:
 * temperature compensation of the crystal drift during TX (~1.6 ppm/min from cold);
-* test card with the callsign overlaid from the dashboard;
 * 1000 kS symbol rate;
 * SPI link to an ESP32-S3 (dashboard during TX, cross-band transponder, streaming from a phone).
 

@@ -8,9 +8,9 @@ Painel em 11 línguas · Licença GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 a 2375 MHz recebido com LOCK, MER 20,9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 a 5750 MHz recebido com LOCK, MER 20,8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![DVB-S2 a 2375 MHz com indicativo e frequência sobrepostos, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 a 5750 MHz com indicativo e frequência sobrepostos, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*As duas bandas recebidas pelo Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, padrão de teste H.265 + AAC, MER ~21 dB, VBER 0.*
+*Padrão de teste neutro com indicativo e frequência definidos no painel. 13 cm recebidos por um Portsdown 4 com Pluto (ecrã de 7", MER 20,4 dB), 6 cm pelo Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
 
 ## O que faz
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-O farol precisa também dos dois padrões de teste pré-codificados na flash (6 cm em `0x290000`, 13 cm em `0x320000`). **Os padrões neutros e uma imagem pronta a gravar serão publicados com a primeira versão**; são gerados com a ferramenta `make_es` do projeto [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).
+O farol precisa também do padrão de teste neutro na flash em `0x290000` (um só ficheiro para as duas bandas, cerca de 760 KB). É gerado no PC com `tools/monoscope/make_es_c5.py` (ffmpeg com libx265 e a fonte livre DejaVu); o indicativo e a frequência **não** estão no ficheiro: o C5 sobrepõe-nos a partir das definições do painel.
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## Primeira utilização
 
@@ -74,7 +80,6 @@ Primeira fase do projeto concluída (novembro de 2026). Testado no ar: DVB-S2 em
 
 Próximos passos:
 * compensação por temperatura da deriva do cristal durante a TX (~1,6 ppm/min a frio);
-* padrão de teste com o indicativo sobreposto a partir do painel;
 * symbol rate de 1000 kS;
 * ligação SPI a um ESP32-S3 (painel durante a TX, transponder de banda cruzada, streaming a partir do telemóvel).
 

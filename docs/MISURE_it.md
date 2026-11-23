@@ -58,8 +58,10 @@ Le librerie del costruttore per la C5 non contengono più il codice di replay in
 | 21/11 11:24 | 5750 MHz | 333 kS | **TS generato in tempo reale sulla C5** | tutta la prova (120 s) | 20,4–23,5 dB | VBER 0, 0 frame DUMMY, contatore a schermo senza salti del PCR |
 | 21/11 11:46 | 2375 MHz | 333 kS | tempo reale | < 30 s, tenuto 120 s | 21,2–23,8 dB | VBER 0, S/N ~43,5 dB, offset +20…+22 kHz |
 | 21/11 12:22 | 2375 + 5750 | 333 kS | **ciclo del beacon** 13 → 6 cm | ~20 s | 23,3 dB (6 cm) | 600 + 600 frame, 0 DUMMY; 13 cm anche sul MiniTiouner |
-| 22/11 23:09 | 2375 MHz | 333 kS | beacon, +7 ppm | sì | 20,9 dB | offset **+7,5 kHz**, TS 450 kb/s, S/N 36,6 dB (immagine `img/pd4pdx_hdmi_20261122_230937.jpg`) |
-| 22/11 23:11 | 5750 MHz | 333 kS | beacon, +7 ppm | sì | 20,8 dB | offset **+10,8 kHz**, TS 386 kb/s, S/N 35,7 dB (immagine `img/pd4pdx_hdmi_20261122_231119.jpg`) |
+| 22/11 23:09 | 2375 MHz | 333 kS | beacon, +7 ppm | sì | 20,9 dB | offset **+7,5 kHz**, TS 450 kb/s, S/N 36,6 dB |
+| 22/11 23:11 | 5750 MHz | 333 kS | beacon, +7 ppm | sì | 20,8 dB | offset **+10,8 kHz**, TS 386 kb/s, S/N 35,7 dB |
+| 23/11 01:21 | 2375 MHz | 333 kS | **monoscopio neutro, sovrimpressione** | sì | 20,4 dB | nominativo e frequenza dalla dashboard; Portsdown 4 + Pluto (Valigetta), offset −9,0 kHz sulla sua scala, TS 515 kb/s (immagine `img/valigetta_touch_20261123_012107.jpg`) |
+| 23/11 01:22 | 5750 MHz | 333 kS | **monoscopio neutro, sovrimpressione** | sì | 22,8 dB | Pd4Pdx, offset +10,2 kHz, TS 580 kb/s, VBER 0, S/N 32,7 dB (immagine `img/pd4pdx_hdmi_20261123_012258.jpg`) |
 
 SR esatti a 40 MS/s: 125 kS (16 × 20), 250 kS (16 × 10), 500 kS (16 × 5), 1000 kS (8 × 5); 333 kS usa l'accumulatore frazionario.
 1000 kS è disattivato in questa versione (la prova a secco blocca la C5, da indagare).
@@ -97,8 +99,8 @@ SR esatti a 40 MS/s: 125 kS (16 × 20), 250 kS (16 × 10), 500 kS (16 × 5), 100
 | 0x40820000–0x4083FFFF | banco A del DAC / banco di cattura (della radio durante la TX) |
 | 0x40840000–0x4084BFFF | banco B del DAC (12 000 parole), prestato al heap quando c'è l'access point |
 | RAM LP 0x50000000 | tabella BCH |
-| Flash 0x290000 | monoscopio ES dei 6 cm (H.265, 571 689 B) |
-| Flash 0x320000 | monoscopio ES dei 13 cm (574 466 B) |
+| Flash 0x290000 | monoscopio neutro PDXES002 per le due bande (H.265 + AAC + tabelle della sovrimpressione, 761 252 B) |
+| Flash 0x3F0000 | strisce del nominativo e della frequenza composte dalla C5 (0x8000 per banda, riscritte solo se il testo cambia) |
 
 ## 6. Configurazione (NVS, versione 6)
 

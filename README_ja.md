@@ -8,9 +8,9 @@
 
 | 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
 |---|---|
-| ![2375 MHz の DVB-S2 をロック受信、MER 20.9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![5750 MHz の DVB-S2 をロック受信、MER 20.8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 20.4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Pd4Pdx(Pluto + leandvb)で両バンドを受信: QPSK 3/4、333 kS、H.265 + AAC テストカード、MER 約 21 dB、VBER 0。*
+*ダッシュボードで設定したコールサインと周波数を重ねたニュートラルなテストカード。13 cm は Pluto 付き Portsdown 4(7 インチ画面、MER 20.4 dB)、6 cm は Pd4Pdx(Pluto + leandvb、MER 22.8 dB、VBER 0)で受信: QPSK 3/4、333 kS、H.265 + AAC。*
 
 ## 機能
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-ビーコンには、フラッシュ上にエンコード済みテストカード 2 つ(6 cm は `0x290000`、13 cm は `0x320000`)も必要です。**ニュートラルなテストカードと書込み用イメージは最初のリリースで公開します**。これらは [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon) プロジェクトの `make_es` ツールで作成します。
+ビーコンには、フラッシュの `0x290000` にニュートラルなテストカード(両バンド共通の 1 ファイル、約 760 KB)が必要です。PC 上で `tools/monoscope/make_es_c5.py`(libx265 付き ffmpeg と無料の DejaVu フォント)で作成します。コールサインと周波数はファイルに**含まれず**、C5 がダッシュボードの設定から重ねて表示します。
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## 初回の使い方
 
@@ -74,7 +80,6 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 
 次の段階:
 * 送信中の水晶ドリフト(冷えた状態から約 1.6 ppm/分)の温度補償
-* ダッシュボードで入力したコールサインをテストカードに重ねる
 * 1000 kS のシンボルレート
 * ESP32-S3 との SPI 接続(送信中のダッシュボード、クロスバンド・トランスポンダ、スマートフォンからのストリーミング)
 

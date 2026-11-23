@@ -58,8 +58,10 @@ The vendor libraries of the C5 no longer contain the TX replay code (`dactrig` i
 | 21/11 11:24 | 5750 MHz | 333 kS | **TS generated live on the C5** | whole test (120 s) | 20.4–23.5 dB | VBER 0, 0 DUMMY frames, counter on screen without PCR jumps |
 | 21/11 11:46 | 2375 MHz | 333 kS | live | < 30 s, held 120 s | 21.2–23.8 dB | VBER 0, S/N ~43.5 dB, offset +20…+22 kHz |
 | 21/11 12:22 | 2375 + 5750 | 333 kS | **beacon cycle** 13 → 6 cm | ~20 s | 23.3 dB (6 cm) | 600 + 600 frames, 0 DUMMY; 13 cm also on MiniTiouner |
-| 22/11 23:09 | 2375 MHz | 333 kS | beacon, +7 ppm | yes | 20.9 dB | offset **+7.5 kHz**, TS 450 kb/s, S/N 36.6 dB (picture `img/pd4pdx_hdmi_20261122_230937.jpg`) |
-| 22/11 23:11 | 5750 MHz | 333 kS | beacon, +7 ppm | yes | 20.8 dB | offset **+10.8 kHz**, TS 386 kb/s, S/N 35.7 dB (picture `img/pd4pdx_hdmi_20261122_231119.jpg`) |
+| 22/11 23:09 | 2375 MHz | 333 kS | beacon, +7 ppm | yes | 20.9 dB | offset **+7.5 kHz**, TS 450 kb/s, S/N 36.6 dB |
+| 22/11 23:11 | 5750 MHz | 333 kS | beacon, +7 ppm | yes | 20.8 dB | offset **+10.8 kHz**, TS 386 kb/s, S/N 35.7 dB |
+| 23/11 01:21 | 2375 MHz | 333 kS | **neutral test card, overlay** | yes | 20.4 dB | callsign and frequency from the dashboard; Portsdown 4 + Pluto (Valigetta), offset −9.0 kHz on its scale, TS 515 kb/s (picture `img/valigetta_touch_20261123_012107.jpg`) |
+| 23/11 01:22 | 5750 MHz | 333 kS | **neutral test card, overlay** | yes | 22.8 dB | Pd4Pdx, offset +10.2 kHz, TS 580 kb/s, VBER 0, S/N 32.7 dB (picture `img/pd4pdx_hdmi_20261123_012258.jpg`) |
 
 Exact symbol rates at 40 MS/s: 125 kS (16 × 20), 250 kS (16 × 10), 500 kS (16 × 5), 1000 kS (8 × 5); 333 kS uses the fractional accumulator.
 1000 kS is disabled in this version (dry test locks the C5, under investigation).
@@ -97,8 +99,8 @@ Exact symbol rates at 40 MS/s: 125 kS (16 × 20), 250 kS (16 × 10), 500 kS (16 
 | 0x40820000–0x4083FFFF | DAC bank A / capture bank (owned by the radio during TX) |
 | 0x40840000–0x4084BFFF | DAC bank B (12 000 words), lent to the heap when the access point runs |
 | LP RAM 0x50000000 | BCH table |
-| Flash 0x290000 | 6 cm test card ES (H.265, 571 689 B) |
-| Flash 0x320000 | 13 cm test card ES (574 466 B) |
+| Flash 0x290000 | neutral test card PDXES002 for both bands (H.265 + AAC + overlay tables, 761 252 B) |
+| Flash 0x3F0000 | callsign and frequency strips composed by the C5 (0x8000 per band, rewritten only when the text changes) |
 
 ## 6. Configuration (NVS, version 6)
 

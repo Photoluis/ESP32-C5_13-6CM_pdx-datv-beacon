@@ -10,9 +10,9 @@
 
 | 13 سم — 2375.000 MHz | 6 سم — 5750.000 MHz |
 |---|---|
-| ![استقبال DVB-S2 على 2375 MHz مع LOCK، MER 20.9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![استقبال DVB-S2 على 5750 MHz مع LOCK، MER 20.8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![استقبال DVB-S2 على 2375 MHz مع النداء والتردد فوق الصورة، LOCK، MER 20.4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![استقبال DVB-S2 على 5750 MHz مع النداء والتردد فوق الصورة، LOCK، MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*النطاقان كما استقبلهما جهاز Pd4Pdx ‏(Pluto + leandvb): ‏QPSK 3/4، ‏333 kS، صورة اختبار H.265 + AAC، ‏MER نحو 21 dB، ‏VBER 0.*
+*صورة اختبار محايدة يظهر عليها النداء المميز والتردد المضبوطان من لوحة التحكم. استقبل نطاق 13 سم جهاز Portsdown 4 مع Pluto (شاشة 7 بوصات، ‏MER 20.4 dB)، ونطاق 6 سم جهاز Pd4Pdx ‏(Pluto + leandvb، ‏MER 22.8 dB، ‏VBER 0): ‏QPSK 3/4، ‏333 kS، ‏H.265 + AAC.*
 
 ## ماذا تفعل
 
@@ -58,7 +58,17 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 
 <div dir="rtl">
 
-تحتاج المنارة أيضًا إلى صورتَي الاختبار المرمّزتين مسبقًا في الفلاش (6 سم عند `0x290000`، و13 سم عند `0x320000`). **ستُنشر صور الاختبار المحايدة وصورة جاهزة للتحميل مع الإصدار الأول**؛ وتُولَّد بأداة `make_es` من مشروع [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).
+تحتاج المنارة أيضًا إلى صورة الاختبار المحايدة في الفلاش عند `0x290000` (ملف واحد للنطاقين، نحو 760 KB). تُولَّد على الحاسوب بالأداة `tools/monoscope/make_es_c5.py` (ffmpeg مع libx265 والخط المجاني DejaVu)؛ النداء المميز والتردد **ليسا** في الملف: تضيفهما C5 فوق الصورة من إعدادات لوحة التحكم.
+
+</div>
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+<div dir="rtl">
 
 ## الاستخدام الأول
 
@@ -80,7 +90,6 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 
 الخطوات التالية:
 * تعويض حراري لانحراف البلورة أثناء الإرسال (نحو 1.6 ppm في الدقيقة عند البدء باردًا)؛
-* صورة اختبار يظهر عليها النداء المميز المُدخل من لوحة التحكم؛
 * معدل رموز 1000 kS؛
 * وصلة SPI مع ESP32-S3 (لوحة تحكم أثناء الإرسال، مُرحِّل بين النطاقات، بث من الهاتف).
 

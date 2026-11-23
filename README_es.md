@@ -8,9 +8,9 @@ Panel en 11 idiomas · Licencia GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 a 2375 MHz recibido con LOCK, MER 20,9 dB](docs/img/pd4pdx_hdmi_20261122_230937.jpg) | ![DVB-S2 a 5750 MHz recibido con LOCK, MER 20,8 dB](docs/img/pd4pdx_hdmi_20261122_231119.jpg) |
+| ![DVB-S2 a 2375 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 a 5750 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Las dos bandas recibidas por el Pd4Pdx (Pluto + leandvb): QPSK 3/4, 333 kS, carta de ajuste H.265 + AAC, MER ~21 dB, VBER 0.*
+*Carta de ajuste neutra con indicativo y frecuencia ajustados desde el panel. 13 cm recibidos por un Portsdown 4 con Pluto (pantalla de 7", MER 20,4 dB), 6 cm por el Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
 
 ## Qué hace
 
@@ -52,7 +52,13 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-La baliza necesita además las dos cartas de ajuste precodificadas en la flash (6 cm en `0x290000`, 13 cm en `0x320000`). **Las cartas neutras y una imagen lista para grabar se publicarán con la primera versión**; se generan con la herramienta `make_es` del proyecto [ESP32-S3-CAM_PDX DATV Beacon](https://github.com/Photoluis/Esp32s3-cam-pdx-datv-beacon).
+La baliza necesita además la carta de ajuste neutra en la flash en `0x290000` (un solo archivo para las dos bandas, unos 760 KB). Se genera en el PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 y la fuente libre DejaVu); el indicativo y la frecuencia **no** están en el archivo: los sobreimprime el C5 desde los ajustes del panel.
+
+```
+cd tools/monoscope
+python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
+esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
 
 ## Primer uso
 
@@ -74,7 +80,6 @@ Primera fase del proyecto terminada (noviembre de 2026). Probado en el aire: DVB
 
 Próximos pasos:
 * compensación por temperatura de la deriva del cristal durante la TX (~1,6 ppm/min en frío);
-* carta de ajuste con el indicativo sobreimpreso desde el panel;
 * symbol rate de 1000 kS;
 * enlace SPI con un ESP32-S3 (panel durante la TX, transpondedor de banda cruzada, streaming desde el teléfono).
 
