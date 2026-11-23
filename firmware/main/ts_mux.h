@@ -11,13 +11,13 @@
 typedef struct {
     char magic[8];                       /* "PDXES001" o "PDXES002" (con la sezione di sovrimpressione) */
     uint32_t nunits, loop_ticks, vtype, atype, data_off;
-    uint32_t ovl_off;                    /* PDXES002: offset della sezione "PDXOVL01" (PDXES001: inizio dell'etichetta) */
+    uint32_t ovl_off;                    /* PDXES002: offset della sezione "PDXOVL02" (PDXES001: inizio dell'etichetta) */
     char label[32];
 } pdx_es_header_t;
 
 /* C5: sezione di sovrimpressione (tools/monoscope/make_es_c5.py), tutti gli offset relativi al suo inizio */
 typedef struct {
-    char magic[8];                       /* "PDXOVL01" */
+    char magic[8];                       /* "PDXOVL02" */
     uint32_t nfields, nidr, idr_off;
     uint8_t cols, abits, flags, rsv;     /* flags: bit0 SAO attivo, bit1 entry point (WPP) nell'intestazione */
     int8_t init_qp_minus26;
@@ -25,9 +25,10 @@ typedef struct {
 } pdx_ovl_header_t;
 
 typedef struct {
-    uint8_t row0, rows, cell, rsv;       /* prima riga di CTU, righe, caratteri per cella */
+    uint8_t row0, rows, cell, ngroups;   /* prima riga di CTU, righe, caratteri per cella, sfondi diversi */
     uint16_t nglyph, rsv2;
-    uint32_t glyph_off;                  /* voci: 2 byte di chiave, 2 di riserva, per riga {off u32, len u16, qp, sao} */
+    uint32_t glyph_off;                  /* mappa colonna -> sfondo (cols byte, allineata a 4), poi le voci:
+                                          * 2 byte di chiave, sfondo, riserva, per riga {off u32, len u16, qp, sao} */
     char name[8];
     uint8_t rsv3[4];
 } pdx_ovl_field_t;

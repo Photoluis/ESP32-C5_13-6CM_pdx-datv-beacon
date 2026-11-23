@@ -1040,13 +1040,15 @@ static const pdx_ovl_field_t *ovl_field(const pdx_ovl_header_t *o, uint32_t f)
     return (const pdx_ovl_field_t *)((const uint8_t *)o + sizeof(*o)) + f;
 }
 
-/* voce del carattere (chiave di 1 o 2 caratteri), NULL se assente */
-static const uint8_t *ovl_glyph(const pdx_ovl_header_t *o, const pdx_ovl_field_t *fd, char c0, char c1)
+/* voce del carattere (chiave di 1 o 2 caratteri) codificato sopra lo sfondo della colonna col, NULL se assente */
+static const uint8_t *ovl_glyph(const pdx_ovl_header_t *o, const pdx_ovl_field_t *fd, char c0, char c1, uint32_t col)
 {
+    const uint8_t *map = (const uint8_t *)o + fd->glyph_off;
+    const uint8_t grp = map[col < o->cols ? col : 0];
     const uint32_t esz = 4u + 8u * fd->rows;
-    const uint8_t *e = (const uint8_t *)o + fd->glyph_off;
+    const uint8_t *e = map + ((o->cols + 3u) & ~3u);
     for (uint32_t i = 0; i < fd->nglyph; i++, e += esz)
-        if (e[0] == (uint8_t)c0 && e[1] == (uint8_t)(fd->cell == 2 ? c1 : 0)) return e;
+        if (e[0] == (uint8_t)c0 && e[1] == (uint8_t)(fd->cell == 2 ? c1 : 0) && e[2] == grp) return e;
     return NULL;
 }
 
@@ -1060,7 +1062,7 @@ static uint32_t ovl_compose(const esp_partition_t *pt, uint32_t woff, const pdx_
     const bool call = !strncmp(fd->name, "call", 4);
     for (const char *p = text; *p && n < sizeof t - 2; p++) {
         char c = call && *p >= 'a' && *p <= 'z' ? (char)(*p - 32) : *p;
-        if (!ovl_glyph(o, fd, c, ' ')) c = ' ';       /* carattere non disponibile: spazio */
+        if (!ovl_glyph(o, fd, c, ' ', 0)) c = ' ';    /* carattere non disponibile: spazio */
         t[n++] = c;
     }
     const uint32_t cell = fd->cell ? fd->cell : 1u;
@@ -1075,8 +1077,8 @@ static uint32_t ovl_compose(const esp_partition_t *pt, uint32_t woff, const pdx_
         for (uint32_t col = 0; col < o->cols; col++) {
             const bool in = col >= c0 && col < c0 + ncell;
             const char a = in ? t[(col - c0) * cell] : ' ', b = in && cell == 2 ? t[(col - c0) * cell + 1] : ' ';
-            const uint8_t *g = ovl_glyph(o, fd, a, b);
-            if (!g) g = ovl_glyph(o, fd, ' ', ' ');
+            const uint8_t *g = ovl_glyph(o, fd, a, b, col);
+            if (!g) g = ovl_glyph(o, fd, ' ', ' ', col);
             if (!g) return 0;
             uint32_t doff;
             uint16_t dlen;

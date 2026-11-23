@@ -217,7 +217,7 @@ const pdx_ovl_header_t *pdx_es_overlay(const uint8_t *es_file)
     const pdx_es_header_t *h = (const pdx_es_header_t *)es_file;
     if (memcmp(h->magic, "PDXES002", 8) || !h->ovl_off) return NULL;
     const pdx_ovl_header_t *o = (const pdx_ovl_header_t *)(es_file + h->ovl_off);
-    return memcmp(o->magic, "PDXOVL01", 8) ? NULL : o;
+    return memcmp(o->magic, "PDXOVL02", 8) ? NULL : o;
 }
 
 void pdx_mux_set_overlay(pdx_mux_t *m, const uint8_t *const blob[], const uint32_t len[])
