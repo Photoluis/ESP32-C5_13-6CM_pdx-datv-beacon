@@ -1338,6 +1338,9 @@ void pdx_rf_s2play(int amp, unsigned ms, uint32_t lat, unsigned qinv, pdx_stream
 #define LIVE_ES_AREA_OFF 0x100000u
 #define LIVE_ES_AREA_LEN 0x160000u
 #define LIVE_ES13_OFF    0x090000u
+/* 23/11: secondo monoscopio PDXES002 per gli SR sotto 333 kS (make_es_c5.py --sr 125000) ad assoluto 0x340000, fino a
+ * 704 KB; da 333 kS in su resta quello a 0x290000 (più dettagliato: a 333 kS quello leggero si vede peggio) */
+#define LIVE_ES_LOW_OFF  0x0B0000u
 #define OVL_PART_OFF     0x260000u                   /* assoluto 0x3F0000: strisce composte, 0x8000 per banda */
 #define OVL_SLOT         0x8000u
 #define OVL_BUF          1600u                       /* una slice con intestazione ed emulation prevention */
@@ -1578,9 +1581,15 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     if (sr < 25000u || sr > 1000000u) return "SR";
     const char *e = live_es_open(live_src);
     if (e) return e;
-    e = ovl_prepare(live_src, live_es[live_src], true);          /* flash scritta solo se il testo è cambiato */
+    const uint8_t *es = live_es[live_src];
+    const bool low = sr < 333000u && !memcmp(live_area, "PDXES002", 8) &&
+                     !memcmp(live_area + LIVE_ES_LOW_OFF, "PDXES002", 8);
+    if (low) es = live_area + LIVE_ES_LOW_OFF;
+    printf("S2 monoscopio %s (0x%06" PRIx32 ")\n", low ? "per SR bassi" : "standard",
+           (uint32_t)(0x190000u + LIVE_ES_AREA_OFF + (uint32_t)(es - live_area)));
+    e = ovl_prepare(live_src, es, true);                          /* flash scritta solo se il testo o il file cambia */
     if (e) return e;
-    e = live_prepare(live_es[live_src], sr, "3/4", live_service, live_provider);
+    e = live_prepare(es, sr, "3/4", live_service, live_provider);
     if (e) return e;
     uint32_t hold;
     qsps = pick_sps(sr, &hold);

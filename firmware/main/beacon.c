@@ -30,6 +30,10 @@ _Static_assert(offsetof(pdx_bcn_cfg_t, xc_ref_x10) == CFG_SIZE_V6, "layout della
 #define NVS_NS   "bcn"
 #define BOOT_GPIO 28
 
+/* 23/11: provati in RF 333 e 125 kS; 250, 100 e 66 kS trasmessi bene (ricezione da verificare); 500 kS: il produttore
+ * non regge (in sviluppo); 33 kS: con l'audio non resta posto al video */
+static bool sr_ok(uint32_t sr) { return sr == 66000u || sr == 100000u || sr == 125000u || sr == 250000u || sr == 333000u; }
+
 static void v7_defaults(pdx_bcn_cfg_t *c)
 {
     c->xc = 3;               /* 23/11 prove G/H: compensazione in CW e pre-centraggio DVB-S2 */
@@ -87,7 +91,7 @@ void pdx_bcn_load(pdx_bcn_cfg_t *c)
             n = sizeof t;
         }
         if (t.ver == CFG_VER && n == sizeof t) *c = t;
-        if (c->sr != 333000u) { printf("CONFIG sr %" PRIu32 " non disponibile: 333000\n", c->sr); c->sr = 333000u; }
+        if (!sr_ok(c->sr)) { printf("CONFIG sr %" PRIu32 " non disponibile: 333000\n", c->sr); c->sr = 333000u; }
     }
     nvs_close(h);
 }
@@ -155,8 +159,7 @@ bool pdx_bcn_set(pdx_bcn_cfg_t *c, const char *key, const char *val)
     }
     if (!strcmp(key, "f13")) return freq_khz(val, 2300, 2450, &c->f13_khz);
     if (!strcmp(key, "f6")) return freq_khz(val, 5650, 5850, &c->f6_khz);
-    /* 23/11: il generatore DVB-S2 dal vivo regge solo 333 kS (125/250/500 kS: riempimento oltre la finestra, 0 frame) */
-    if (!strcmp(key, "sr") && num(val, 125000, 1000000, &x) && x == 333000) { c->sr = (uint32_t)x; return true; }   /* 1000 kS: in sviluppo (21/11 a secco si blocca) */
+    if (!strcmp(key, "sr") && num(val, 25000, 1000000, &x) && sr_ok((uint32_t)x)) { c->sr = (uint32_t)x; return true; }   /* 1000 kS: in sviluppo (21/11 a secco si blocca) */
     if (!strcmp(key, "amp") && num(val, 20, 300, &x)) { c->amp = (int32_t)x; return true; }
     if (!strcmp(key, "tx") && num(val, 10, 600, &x)) { c->tx_s = (uint16_t)x; return true; }
     if (!strcmp(key, "pause") && num(val, 5, 3600, &x)) { c->pause_s = (uint16_t)x; return true; }
