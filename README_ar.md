@@ -10,9 +10,13 @@
 
 | 13 سم — 2375.000 MHz | 6 سم — 5750.000 MHz |
 |---|---|
-| ![استقبال DVB-S2 على 2375 MHz مع النداء والتردد فوق الصورة، LOCK، MER 20.4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![استقبال DVB-S2 على 5750 MHz مع النداء والتردد فوق الصورة، LOCK، MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+| ![استقبال DVB-S2 على 2375 MHz مع النداء والتردد فوق الصورة، LOCK، MER 23.4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![استقبال DVB-S2 على 5750 MHz مع النداء والتردد فوق الصورة، LOCK، MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*صورة اختبار محايدة يظهر عليها النداء المميز والتردد المضبوطان من لوحة التحكم. استقبل نطاق 13 سم جهاز Portsdown 4 مع Pluto (شاشة 7 بوصات، ‏MER 20.4 dB)، ونطاق 6 سم جهاز Pd4Pdx ‏(Pluto + leandvb، ‏MER 22.8 dB، ‏VBER 0): ‏QPSK 3/4، ‏333 kS، ‏H.265 + AAC.*
+*صورة اختبار محايدة يظهر عليها النداء المميز والتردد المضبوطان من لوحة التحكم. استقبل نطاق 13 سم جهاز Portsdown 4 مع Pluto (شاشة 7 بوصات، ‏MER 23.4 dB)، ونطاق 6 سم جهاز Pd4Pdx ‏(Pluto + leandvb، ‏MER 22.8 dB، ‏VBER 0): ‏QPSK 3/4، ‏333 kS، ‏H.265 + AAC.*
+
+<p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="لوحة ESP32-C5-Zero مع كابل IPEX"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="منصة الاختبار وجهاز Pd4Pdx يستقبل نطاق 6 سم"></p>
+
+*لوحة ESP32-C5-Zero على منصة الاختبار (المؤشر الأزرق = إرسال على 6 سم، هوائي عريض النطاق على IPEX) وجهاز Pd4Pdx يستقبلها على 5750 MHz.*
 
 ## ماذا تفعل
 

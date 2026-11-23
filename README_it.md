@@ -8,9 +8,13 @@ Dashboard in 11 lingue · Licenza GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 a 2375 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 a 5750 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+| ![DVB-S2 a 2375 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 23,4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 a 5750 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Monoscopio neutro con nominativo e frequenza impostati dalla dashboard. 13 cm ricevuti da un Portsdown 4 con Pluto (schermo 7", MER 20,4 dB), 6 cm dal Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Monoscopio neutro con nominativo e frequenza impostati dalla dashboard. 13 cm ricevuti da un Portsdown 4 con Pluto (schermo 7", MER 23,4 dB), 6 cm dal Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+
+<p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero con cavo IPEX"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Banco di prova con il Pd4Pdx che riceve i 6 cm"></p>
+
+*L'ESP32-C5-Zero sul banco (LED blu = TX a 6 cm, antenna larga banda sull'IPEX) e il Pd4Pdx che la riceve a 5750 MHz.*
 
 ## Cosa fa
 

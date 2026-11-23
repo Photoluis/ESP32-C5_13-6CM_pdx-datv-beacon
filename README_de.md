@@ -8,9 +8,13 @@ Dashboard in 11 Sprachen · Lizenz GPL-3.0
 
 | 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
 |---|---|
-| ![DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 20,4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+| ![DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 23,4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*Neutrales Testbild mit Rufzeichen und Frequenz aus dem Dashboard. 13 cm empfangen mit einem Portsdown 4 mit Pluto (7"-Bildschirm, MER 20,4 dB), 6 cm mit dem Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Neutrales Testbild mit Rufzeichen und Frequenz aus dem Dashboard. 13 cm empfangen mit einem Portsdown 4 mit Pluto (7"-Bildschirm, MER 23,4 dB), 6 cm mit dem Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+
+<p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero mit IPEX-Kabel"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Messplatz mit dem Pd4Pdx beim Empfang auf 6 cm"></p>
+
+*Der ESP32-C5-Zero am Messplatz (blaue LED = Senden auf 6 cm, Breitbandantenne am IPEX) und der Pd4Pdx beim Empfang auf 5750 MHz.*
 
 ## Was sie kann
 

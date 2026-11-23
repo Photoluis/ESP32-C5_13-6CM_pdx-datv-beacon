@@ -8,9 +8,13 @@
 
 | 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
 |---|---|
-| ![コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 20.4 dB](docs/img/valigetta_touch_20261123_012107.jpg) | ![コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+| ![コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 23.4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
 
-*ダッシュボードで設定したコールサインと周波数を重ねたニュートラルなテストカード。13 cm は Pluto 付き Portsdown 4(7 インチ画面、MER 20.4 dB)、6 cm は Pd4Pdx(Pluto + leandvb、MER 22.8 dB、VBER 0)で受信: QPSK 3/4、333 kS、H.265 + AAC。*
+*ダッシュボードで設定したコールサインと周波数を重ねたニュートラルなテストカード。13 cm は Pluto 付き Portsdown 4(7 インチ画面、MER 23.4 dB)、6 cm は Pd4Pdx(Pluto + leandvb、MER 22.8 dB、VBER 0)で受信: QPSK 3/4、333 kS、H.265 + AAC。*
+
+<p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="IPEX ケーブル付き ESP32-C5-Zero"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="6 cm を受信する Pd4Pdx と試験台"></p>
+
+*試験台の ESP32-C5-Zero(青 LED = 6 cm 送信中、IPEX に広帯域アンテナ)と、5750 MHz で受信する Pd4Pdx。*
 
 ## 機能
 
