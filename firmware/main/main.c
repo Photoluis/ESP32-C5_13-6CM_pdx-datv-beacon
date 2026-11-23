@@ -32,9 +32,19 @@
 #include "led_status.h"
 #include "rf_c5.h"
 
-#define FW_VERSION "C5-B3-OVL"
+#define FW_VERSION "C5-B4-CW"
 
 static bool tx_armed;
+
+/* fine della CW (dal task della radio): uscite a riposo, LED giallo */
+static const pdx_bcn_cfg_t *cw_cfg;
+static int cw_band;
+static void cw_end(const char *why)
+{
+    if (cw_cfg) pdx_bcn_route(cw_cfg, cw_band, false);
+    pdx_led_idle();
+    printf("CW fine: %s\n", why);
+}
 
 extern int _bss_end, _data_end, _iram_end;
 
@@ -174,6 +184,7 @@ void app_main(void)
                     led_red = true;
                 }
         }
+        if (pdx_rf_cw_active() && strcmp(cmd, "CW") && strcmp(cmd, "CWDRY") && strcmp(cmd, "INFO")) { printf("ERR cw in corso: CW OFF prima\n"); continue; }
         if (!strcmp(cmd, "INFO")) cmd_info();
         else if (!strcmp(cmd, "ANT") && k >= 2) cmd_ant((int)a);
         else if (!strcmp(cmd, "FREQ") && k >= 2) printf(pdx_rf_tune(a) ? "OK freq %u\n" : "ERR freq %u\n", a);
@@ -405,6 +416,69 @@ void app_main(void)
                        " DUMP+4 %08" PRIx32 " +8 %08" PRIx32 " campioni %" PRIu32 "\nOK dacp\n",
                        r.owner_before, r.ctrl_before, r.ctrl_running, r.ctrl_after, r.dump4, r.dump8, r.samples);
             }
+        }
+        else if (!strcmp(cmd, "CW") || !strcmp(cmd, "CWDRY")) {
+            const bool cwdry = !strcmp(cmd, "CWDRY");   /* stessa cosa senza RF (force_txon spento) */
+            /* CW ON <13|6> [amp] [s] | CW MORSE <13|6> <wpm> <pausa_s> <portante_s> <testo> | CW OFF |
+             * CW AMP <1..480> | CW KEY DAC|PA | CW (stato). Frequenza, quarzo, antenna, GPIO e PTT dalla configurazione. */
+            char sub[12] = {0}, rest[64] = {0};
+            sscanf(p, "%*s %11s %63[^\r\n]", sub, rest);
+            for (char *c = sub; *c; c++) if (*c >= 'a' && *c <= 'z') *c -= 32;
+            if (!sub[0]) {
+                printf("OK cw %s amp %d manipolazione %s\n", pdx_rf_cw_active() ? "IN CORSO" : "fermo", pdx_rf_cw_amp(),
+                       pdx_rf_cw_key_pa() ? "PA" : "DAC");
+            } else if (!strcmp(sub, "OFF")) {
+                if (pdx_rf_cw_active()) pdx_rf_cw_stop();
+                printf("OK cw off\n");
+            } else if (!strcmp(sub, "AMP")) {
+                pdx_rf_cw_set_amp(atoi(rest));
+                printf("OK cw amp %d (%.1f dB)\n", pdx_rf_cw_amp(), 20.0 * log10(pdx_rf_cw_amp() / 480.0));
+            } else if (!strcmp(sub, "KEY")) {
+                pdx_rf_cw_set_key_pa(rest[0] == 'p' || rest[0] == 'P');
+                printf("OK cw key %s\n", pdx_rf_cw_key_pa() ? "PA" : "DAC");
+            } else if (!strcmp(sub, "ON") || !strcmp(sub, "MORSE")) {
+                if (!tx_armed && !cwdry) { printf("ERR non armato (TXARM)\n"); continue; }
+                if (pdx_rf_cw_active()) { printf("ERR cw gia' in corso (CW OFF)\n"); continue; }
+                if (pdx_bcn_stop_gpio_active()) { printf("ERR GPIO STOP a massa\n"); continue; }
+                const bool morse = !strcmp(sub, "MORSE");
+                unsigned band = 0, x1 = 0, x2 = 0, x3 = 0;
+                int nch = 0;
+                const int n = sscanf(rest, "%u %u %u %u %n", &band, &x1, &x2, &x3, &nch);
+                if (n < 1 || (band != 13 && band != 6) || (morse && (n < 4 || !rest[nch]))) {
+                    printf("ERR uso: CW ON <13|6> [amp] [s]  |  CW MORSE <13|6> <wpm> <pausa_s> <portante_s> <testo>\n");
+                    continue;
+                }
+                pdx_cw_job_t job = {0};
+                job.dry = cwdry;
+                if (morse) {
+                    job.wpm = x1; job.pause_s = x2; job.carrier_s = x3; job.max_s = PDX_CW_MAX_S;
+                    snprintf(job.text, sizeof job.text, "%s", rest + nch);
+                } else {
+                    if (n >= 2 && x1) pdx_rf_cw_set_amp((int)x1);
+                    job.max_s = n >= 3 && x2 ? x2 : 600;
+                }
+                const int b = band == 13 ? 0 : 1;
+                const uint32_t fk = b == 0 ? bcfg.f13_khz : bcfg.f6_khz;
+                pdx_rf_set_ppm(bcfg.ppm_x100);
+                if (!pdx_rf_tune_khz(fk)) { printf("ERR frequenza %" PRIu32 " kHz\n", fk); continue; }
+                if (!cwdry) pdx_bcn_route(&bcfg, b, true);
+                cw_cfg = cwdry ? NULL : &bcfg; cw_band = b;
+                const double lvl = 20.0 * log10((double)pdx_rf_cw_amp() / 480.0);
+                if (b == 0) pdx_led_tx(lvl); else pdx_led_tx6(lvl);
+                const char *e = pdx_rf_cw_start(&job, cw_end);
+                if (e) { pdx_bcn_route(&bcfg, b, false); pdx_led_idle(); printf("ERR cw %s\n", e); continue; }
+                if (morse)
+                    printf("TX CW MORSE %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d %u wpm pausa %u s portante %u s "
+                           "manipolazione %s testo \"%s\" (stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u,
+                           fk % 1000u, pdx_rf_prog_khz(), pdx_rf_cw_amp(), job.wpm, job.pause_s, job.carrier_s,
+                           pdx_rf_cw_key_pa() ? "PA" : "DAC", job.text);
+                else
+                    printf("TX CW portante %s %" PRIu32 ".%03" PRIu32 " MHz (PLL %" PRIu32 " kHz) amp %d (%.1f dB) max %u s "
+                           "(stop: CW OFF, BOOT, GPIO STOP)\n", b ? "6cm" : "13cm", fk / 1000u, fk % 1000u,
+                           pdx_rf_prog_khz(), pdx_rf_cw_amp(), lvl, job.max_s);
+                if (cwdry) printf("(A SECCO: nessuna RF)\n");
+                printf("OK cw\n");
+            } else printf("ERR uso: CW [ON|MORSE|OFF|AMP|KEY]\n");
         }
         else if (!strcmp(cmd, "REG")) {
             uint32_t addr = (uint32_t)strtoul(p + 3, NULL, 16);

@@ -58,5 +58,7 @@ int pdx_bcn_boot_mode(int *band, uint32_t *cycle);     /* modo del riavvio softw
 void pdx_bcn_request_run(int start_band, uint32_t cycle);   /* = pdx_bcn_reboot(RUN, ...) */
 /* TX della banda band (riavvia sempre alla fine: PAUSE o CONFIG) */
 void pdx_bcn_segment(const pdx_bcn_cfg_t *c, int band, uint32_t cycle);
+/* uscita della banda (0 = 13 cm, 1 = 6 cm): commutatore d'antenna, GPIO di banda e PTT; tx = false: a riposo */
+void pdx_bcn_route(const pdx_bcn_cfg_t *c, int band, bool tx);
 /* pausa dopo la banda band: dashboard attiva; alla fine riavvia in RUN sulla banda seguente; false = STOP */
 bool pdx_bcn_pause(const pdx_bcn_cfg_t *c, int band, uint32_t cycle);

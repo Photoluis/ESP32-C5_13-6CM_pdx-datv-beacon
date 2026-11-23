@@ -9,6 +9,7 @@
 #include "rf_c5.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "esp_event.h"
 #include "esp_heap_caps_init.h"
@@ -261,7 +262,6 @@ void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, 
     replay_run(off, val, ms, r);
     for (unsigned j = 0; j < n; j++) PDX_C5_BANK[j] = 0;
 }
-
 void pdx_rf_owner_test(uint32_t out[4])
 {
     const uint32_t owner = rd(PDX_C5_SRAM_OWNER);
@@ -386,6 +386,177 @@ static IRAM_ATTR __attribute__((noinline)) uint32_t pp_loop(uint32_t oa, uint32_
 static pdx_stream_res_t stream_res;
 static uint32_t stop_mask = 1u << 28;             /* ingressi che fermano la TX a livello basso: BOOT + GPIO STOP */
 void pdx_rf_set_stop_gpio(int g) { stop_mask = (1u << 28) | (g >= 0 && g < 28 ? 1u << g : 0u); }
+
+/* ---- CW (23/11): portante non modulata e manipolazione Morse (OOK) ----
+ * Portante = replay in ciclo di CW_WORDS parole costanti (I = amp, Q = 0): riga esattamente sulla frequenza del PLL.
+ * Il lavoro sta in un task (stack nel heap, fuori dal banco 1 che va al motore): la seriale resta libera per CW OFF.
+ * Manipolazione: DAC = replay acceso/spento con la PA sempre accesa (resta la riga residua dell'LO, ~-28 dB);
+ *                PA  = anche force_txon spento nelle pause (spegnimento completo). */
+#define CW_WORDS 64u
+#define CW_VAL (0x80000u | CW_WORDS)                 /* bit19 = ciclo, [13:0] = lunghezza */
+static volatile bool cw_stop_req, cw_running;
+static uint8_t cw_key_pa;
+static int cw_amp = 300;
+static uint32_t cw_owner0, cw_ctrl0;
+static pdx_cw_job_t *cw_job;
+static void (*cw_done)(const char *why);
+
+static void cw_dac(bool on)
+{
+    const uint32_t ctrl = PDX_C5_DUMP_BASE + 0x0Cu;
+    if (on) {
+        wr(PDX_C5_SRAM_OWNER, (cw_owner0 & ~0xF00u) | 0x200u | 0x10000u);   /* banco 1 + 64 KB -> 0x40830000 */
+        wr(ctrl, cw_ctrl0 & ~(1u << 31));
+        wr(ctrl, CW_VAL);
+        wr(ctrl, CW_VAL | (1u << 31));
+    } else {
+        wr(ctrl, rd(ctrl) & ~(1u << 31));
+        wr(ctrl, cw_ctrl0);
+        wr(PDX_C5_SRAM_OWNER, cw_owner0);
+    }
+}
+
+static bool cw_key_state;
+static void cw_key(bool on)
+{
+    if (on == cw_key_state) return;
+    cw_key_state = on;
+    if (cw_key_pa) {
+        if (on) { tx_on(); esp_rom_delay_us(3000); cw_dac(true); }
+        else { cw_dac(false); tx_off(); }
+    } else cw_dac(on);
+}
+
+static const char *cw_why;
+static int64_t cw_deadline;
+static bool cw_check(void)                           /* false = fermare */
+{
+    if (cw_stop_req) { cw_why = "CW OFF"; return false; }
+    if (~REG_READ(GPIO_IN_REG) & stop_mask) { cw_why = "BOOT o GPIO STOP"; return false; }
+    if (esp_timer_get_time() > cw_deadline) { cw_why = "tempo massimo"; return false; }
+    return true;
+}
+
+static bool cw_wait(TickType_t *t, uint32_t ms)      /* attesa a passi di 10 ms con i controlli */
+{
+    while (ms) {
+        const uint32_t d = ms > 10u ? 10u : ms;
+        vTaskDelayUntil(t, pdMS_TO_TICKS(d));
+        ms -= d;
+        if (!cw_check()) return false;
+    }
+    return true;
+}
+
+static const char *morse_of(char c)
+{
+    static const char *az[26] = {".-", "-...", "-.-.", "-..", ".", "..-.", "--.", "....", "..", ".---", "-.-", ".-..",
+                                 "--", "-.", "---", ".--.", "--.-", ".-.", "...", "-", "..-", "...-", ".--", "-..-",
+                                 "-.--", "--.."};
+    static const char *d09[10] = {"-----", ".----", "..---", "...--", "....-", ".....", "-....", "--...", "---..",
+                                  "----."};
+    if (c >= 'a' && c <= 'z') c -= 32;
+    if (c >= 'A' && c <= 'Z') return az[c - 'A'];
+    if (c >= '0' && c <= '9') return d09[c - '0'];
+    switch (c) {
+    case '/': return "-..-.";
+    case '?': return "..--..";
+    case '.': return ".-.-.-";
+    case ',': return "--..--";
+    case '=': return "-...-";
+    case '-': return "-....-";
+    case '+': return ".-.-.";
+    default: return NULL;
+    }
+}
+
+static bool cw_send_text(TickType_t *t, const char *s, uint32_t dot)
+{
+    for (; *s; s++) {
+        if (*s == ' ') { if (!cw_wait(t, 4u * dot)) return false; continue; }   /* 7 punti con i 3 di fine carattere */
+        const char *m = morse_of(*s);
+        if (!m) continue;
+        for (; *m; m++) {
+            cw_key(true);
+            if (!cw_wait(t, *m == '-' ? 3u * dot : dot)) return false;
+            cw_key(false);
+            if (!cw_wait(t, dot)) return false;
+        }
+        if (!cw_wait(t, 2u * dot)) return false;                                /* 3 punti tra i caratteri */
+    }
+    return true;
+}
+
+static void cw_task_fn(void *arg)
+{
+    pdx_cw_job_t *j = (pdx_cw_job_t *)arg;
+    const uint32_t dot = j->wpm ? 1200u / j->wpm : 60u;
+    TickType_t t = xTaskGetTickCount();
+    cw_why = "fine";
+    cw_owner0 = rd(PDX_C5_SRAM_OWNER);
+    cw_ctrl0 = rd(PDX_C5_DUMP_BASE + 0x0Cu);
+    cw_key_state = false;
+    tx_dry = j->dry != 0;
+    tx_on();                                          /* PA accesa (anche con la manipolazione PA: poi segue il tasto) */
+    esp_rom_delay_us(3000);
+    if (cw_key_pa && j->text[0]) tx_off();
+    if (!j->text[0]) {                                /* portante fissa */
+        cw_key(true);
+        while (cw_wait(&t, 100)) {}
+    } else {
+        for (;;) {
+            if (!cw_send_text(&t, j->text, dot)) break;
+            if (j->carrier_s) {
+                if (!cw_wait(&t, 4u * dot)) break;
+                cw_key(true);
+                if (!cw_wait(&t, j->carrier_s * 1000u)) break;
+                cw_key(false);
+            }
+            if (!cw_wait(&t, j->pause_s ? j->pause_s * 1000u : 7u * dot)) break;
+        }
+    }
+    if (cw_key_state) { cw_key_state = false; cw_dac(false); }
+    tx_off();
+    tx_dry = false;
+    phy_txcal_work_mode();
+    pdx_rf_tune_khz(cur_khz);
+    for (unsigned k = 0; k < CW_WORDS + 4u; k++) PDX_C5_BANK[k] = 0;
+    cw_running = false;
+    if (cw_done) cw_done(cw_why);
+    cw_job = NULL;
+    free(j);
+    vTaskDelete(NULL);
+}
+
+void pdx_rf_cw_set_amp(int amp) { cw_amp = amp < 1 ? 1 : amp > PDX_CW_AMP_MAX ? PDX_CW_AMP_MAX : amp; }
+int pdx_rf_cw_amp(void) { return cw_amp; }
+void pdx_rf_cw_set_key_pa(bool pa) { cw_key_pa = pa; }
+bool pdx_rf_cw_key_pa(void) { return cw_key_pa; }
+bool pdx_rf_cw_active(void) { return cw_running; }
+void pdx_rf_cw_stop(void) { cw_stop_req = true; }
+
+const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why))
+{
+    if (cw_running) return "CW gia' in corso";
+    if (bankB_lent) return "dashboard attiva in questo avvio: usare LAB";
+    pdx_cw_job_t *j = malloc(sizeof *j);
+    if (!j) return "memoria";
+    *j = *job;
+    j->text[sizeof j->text - 1] = 0;
+    if (j->max_s < 1) j->max_s = 1;
+    if (j->max_s > PDX_CW_MAX_S) j->max_s = PDX_CW_MAX_S;
+    if (j->wpm && (j->wpm < 5 || j->wpm > 40)) j->wpm = 12;
+    const uint32_t w = pdx_dac_word(cw_amp, 0);
+    for (unsigned k = 0; k < CW_WORDS; k++) PDX_C5_BANK[k] = w;
+    for (unsigned k = CW_WORDS; k < CW_WORDS + 4u; k++) PDX_C5_BANK[k] = 0;
+    cw_stop_req = false;
+    cw_deadline = esp_timer_get_time() + (int64_t)j->max_s * 1000000;
+    cw_done = done;
+    cw_job = j;
+    cw_running = true;
+    if (xTaskCreate(cw_task_fn, "pdx_cw", 3072, j, 5, NULL) != pdPASS) { cw_running = false; cw_job = NULL; free(j); return "task"; }
+    return NULL;
+}
 
 /* copia a tratti contigui: la tabella è lunga 2L (tono ripetuto due volte), quindi da qualunque k si possono copiare
  * L parole senza controllare la fine; ciclo interno srotolato x4 senza volatile */

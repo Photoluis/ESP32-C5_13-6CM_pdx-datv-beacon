@@ -38,6 +38,19 @@ typedef struct { uint32_t owner_before, ctrl_before, ctrl_running, ctrl_after, s
 void pdx_rf_dac_probe(uint32_t off, uint32_t val, int amp, int tone_khz, unsigned fs_khz, unsigned ms, pdx_dacp_res_t *r);
 /* banco precaricato con n parole = k periodi di un tono complesso (k > 0: sopra l'LO), poi replay come sopra */
 void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, unsigned ms, pdx_dacp_res_t *r);
+/* ---- CW (23/11): portante non modulata e Morse OOK sulla frequenza del PLL, in un task (comando CW OFF) ----
+ * text vuoto = portante fissa; altrimenti testo a wpm, poi carrier_s di portante, poi pause_s spento, in ciclo.
+ * Si ferma con pdx_rf_cw_stop, BOOT/GPIO STOP o dopo max_s; done() è chiamata dal task alla fine. */
+#define PDX_CW_AMP_MAX 480
+#define PDX_CW_MAX_S 3600u
+typedef struct { unsigned max_s, wpm, pause_s, carrier_s, dry; char text[48]; } pdx_cw_job_t;   /* dry: motore senza RF */
+const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why));   /* NULL = partito */
+void pdx_rf_cw_stop(void);
+bool pdx_rf_cw_active(void);
+void pdx_rf_cw_set_amp(int amp);           /* livello del DAC 1..480 (predefinito 300) */
+int pdx_rf_cw_amp(void);
+void pdx_rf_cw_set_key_pa(bool pa);        /* manipolazione: false = DAC (PA sempre accesa), true = anche PA spenta */
+bool pdx_rf_cw_key_pa(void);
 /* senza TX: la CPU legge/scrive il banco mentre è assegnato al motore? out[0] letto col motore, out[1] dopo */
 void pdx_rf_owner_test(uint32_t out[4]);
 

@@ -199,6 +199,8 @@ static void gpio_out(int g, bool active, uint8_t pol)
 }
 
 /* uscita della banda b (0 = 13 cm, 1 = 6 cm): commutatore interno e GPIO esterni; tx = false: tutti a riposo */
+static void antenna_route(const pdx_bcn_cfg_t *c, int b, bool tx);
+void pdx_bcn_route(const pdx_bcn_cfg_t *c, int b, bool tx) { antenna_route(c, b, tx); }
 static void antenna_route(const pdx_bcn_cfg_t *c, int b, bool tx)
 {
     gpio_set_level(PDX_C5_ANT_GPIO, (b == 0 ? c->ant13 : c->ant6) ? 1 : 0);
