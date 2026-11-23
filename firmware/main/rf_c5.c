@@ -432,7 +432,11 @@ static const char *cw_why;
 static int64_t cw_deadline, cw_t0, cw_next_log;
 static volatile uint32_t cw_retune_khz;
 static unsigned cw_tlog_s = 1;                      /* lettura della temperatura ogni n s (0 = mai) */
-static uint32_t cw_nlog;              /* CW FREQK durante la portante (prova del cambio di PLL in TX) */
+static uint32_t cw_nlog;
+/* 23/11: la portante si spegneva dopo ~40 s con la C5 convinta di trasmettere. Guardiano: 0 = spento,
+ * 1 = rimette TX e replay se i registri del DAC cambiano, 2 = rimette force_txon ogni 100 ms comunque */
+static unsigned cw_guard = 1;
+static uint32_t cw_fix, cw_next_guard_ms;              /* CW FREQK durante la portante (prova del cambio di PLL in TX) */
 static bool cw_check(void)                           /* false = fermare */
 {
     const int64_t now = esp_timer_get_time();
@@ -440,8 +444,19 @@ static bool cw_check(void)                           /* false = fermare */
         cw_next_log += 1000000;
         const float tc = cw_tlog_s && (cw_nlog % cw_tlog_s) == 0 ? pdx_temp_read() : NAN;
         cw_nlog++;
-        printf("CWT %lld s %.2f C PLL %" PRIu32 " kHz tasto %d\n", (long long)((now - cw_t0) / 1000000), (double)tc,
-               prog_khz, cw_key_state ? 1 : 0);
+        printf("CWT %lld s %.2f C PLL %" PRIu32 " kHz tasto %d ctrl %08" PRIx32 " d8 %08" PRIx32 " own %08" PRIx32
+               " fix %" PRIu32 "\n", (long long)((now - cw_t0) / 1000000), (double)tc, prog_khz, cw_key_state ? 1 : 0,
+               rd(PDX_C5_DUMP_BASE + 0x0Cu), rd(PDX_C5_DUMP_BASE + 8u), rd(PDX_C5_SRAM_OWNER), cw_fix);
+    }
+    if (cw_guard && cw_key_state && now / 1000 >= cw_next_guard_ms) {
+        cw_next_guard_ms = (uint32_t)(now / 1000) + 100u;
+        const bool bad = !(rd(PDX_C5_DUMP_BASE + 0x0Cu) & (1u << 31)) ||
+                         (rd(PDX_C5_DUMP_BASE + 8u) & 0x1E0000u) != 0x1E0000u;
+        if (bad || cw_guard == 2) {
+            if (bad) { cw_fix++; cw_dac(false); }
+            tx_on();
+            if (bad) cw_dac(true);
+        }
     }
     if (cw_retune_khz) {
         const uint32_t k = cw_retune_khz;
@@ -518,6 +533,8 @@ static void cw_task_fn(void *arg)
     cw_t0 = esp_timer_get_time();
     cw_next_log = cw_t0;
     cw_nlog = 0;
+    cw_fix = 0;
+    cw_next_guard_ms = 0;
     tx_dry = j->dry != 0;
     tx_on();                                          /* PA accesa (anche con la manipolazione PA: poi segue il tasto) */
     esp_rom_delay_us(3000);
@@ -558,6 +575,7 @@ bool pdx_rf_cw_active(void) { return cw_running; }
 void pdx_rf_cw_stop(void) { cw_stop_req = true; }
 void pdx_rf_cw_retune(uint32_t khz) { cw_retune_khz = khz; }
 void pdx_rf_cw_set_tlog(unsigned s) { cw_tlog_s = s; }
+void pdx_rf_cw_set_guard(unsigned g) { cw_guard = g > 2 ? 2 : g; }
 
 const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why))
 {

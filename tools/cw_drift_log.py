@@ -20,6 +20,7 @@ def main():
     ap.add_argument("seconds", type=int)
     ap.add_argument("out")
     ap.add_argument("--amp", type=int, default=300)
+    ap.add_argument("--guard", type=int, default=1, help="0 no, 1 ripristino, 2 force_txon ogni 100 ms")
     ap.add_argument("--tlog", type=int, default=1, help="temperatura ogni n s (0 = mai)")
     ap.add_argument("--step", action="append", default=[], help="S:kHz = CW FREQK kHz dopo S secondi")
     a = ap.parse_args()
@@ -46,6 +47,8 @@ def main():
     send("TXARM")
     time.sleep(0.3)
     send(f"CW TLOG {a.tlog}")
+    time.sleep(0.3)
+    send(f"CW GUARD {a.guard}")
     time.sleep(0.3)
     send(f"CW ON {a.band} {a.amp} {a.seconds}")
     t0, buf = time.time(), b""

@@ -436,6 +436,9 @@ void app_main(void)
             } else if (!strcmp(sub, "AMP")) {
                 pdx_rf_cw_set_amp(atoi(rest));
                 printf("OK cw amp %d (%.1f dB)\n", pdx_rf_cw_amp(), 20.0 * log10(pdx_rf_cw_amp() / 480.0));
+            } else if (!strcmp(sub, "GUARD")) {
+                pdx_rf_cw_set_guard((unsigned)atoi(rest));
+                printf("OK cw guard %d\n", atoi(rest));
             } else if (!strcmp(sub, "TLOG")) {
                 pdx_rf_cw_set_tlog((unsigned)atoi(rest));
                 printf("OK cw tlog %d\n", atoi(rest));
