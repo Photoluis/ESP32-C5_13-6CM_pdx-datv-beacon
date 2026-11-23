@@ -6,11 +6,10 @@
 
 Dashboard in 11 languages · License GPL-3.0
 
-| 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
-|---|---|
-| ![DVB-S2 at 2375 MHz with the callsign and frequency overlaid, LOCK, MER 23.4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 at 5750 MHz with the callsign and frequency overlaid, LOCK, MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+<table><tr><th width="50%">13 cm — 2375.000 MHz</th><th width="50%">6 cm — 5750.000 MHz</th></tr>
+<tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 at 2375 MHz with the callsign and frequency overlaid, LOCK, MER 23.4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 at 5750 MHz with the callsign and frequency overlaid, LOCK, MER 22.8 dB"></td></tr></table>
 
-*Neutral test card with callsign and frequency set from the dashboard. 13 cm received by a Portsdown 4 with Pluto (7" screen, MER 23.4 dB), 6 cm by the Pd4Pdx (Pluto + leandvb, MER 22.8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Neutral test card with callsign and frequency set from the dashboard, received with the Pd4Pdx (Pluto + leandvb): 13 cm on the 7" screen (MER 23.4 dB), 6 cm on the HDMI monitor (MER 22.8 dB, VBER 0). QPSK 3/4, 333 kS, H.265 + AAC.*
 
 <p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero with IPEX cable"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Test bench with the Pd4Pdx receiving 6 cm"></p>
 
@@ -35,6 +34,10 @@ All languages: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.png
 The ESP32-C5 radio has an internal sample-replay engine (used by Espressif for calibration). Its TX code is no longer in the vendor libraries, so the registers were found by experiment: two 40 MS/s sample banks played in ping-pong, refilled by the CPU with RRC-filtered QPSK while the other bank is on air, with an exact 333 000 S/s obtained by a fractional accumulator. BCH, LDPC, scrambling, PL framing and the transport-stream multiplexer all run on the single core in the gaps between bank swaps. Details and every measured number: **[docs/MEASUREMENTS.md](docs/MEASUREMENTS.md)**.
 
 ## Hardware
+
+<p align="center"><img src="docs/img/esp32c5_zero_pinout.jpg" width="100%" alt="ESP32-C5-Zero pinout"></p>
+
+*ESP32-C5-Zero pinout (Waveshare board). This firmware uses GPIO26 (antenna switch), GPIO27 (WS2812 LED), GPIO28 (BOOT) and GPIO10 (STOP input); GPIO 0–10 and 23–25 can drive band relays and PTT.*
 
 | Item | Notes |
 |---|---|

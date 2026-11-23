@@ -6,11 +6,10 @@
 
 ダッシュボードは 11 言語 · ライセンス GPL-3.0
 
-| 13 cm — 2375.000 MHz | 6 cm — 5750.000 MHz |
-|---|---|
-| ![コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 23.4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+<table><tr><th width="50%">13 cm — 2375.000 MHz</th><th width="50%">6 cm — 5750.000 MHz</th></tr>
+<tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="コールサインと周波数を重ねた 2375 MHz の DVB-S2、ロック、MER 23.4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="コールサインと周波数を重ねた 5750 MHz の DVB-S2、ロック、MER 22.8 dB"></td></tr></table>
 
-*ダッシュボードで設定したコールサインと周波数を重ねたニュートラルなテストカード。13 cm は Pluto 付き Portsdown 4(7 インチ画面、MER 23.4 dB)、6 cm は Pd4Pdx(Pluto + leandvb、MER 22.8 dB、VBER 0)で受信: QPSK 3/4、333 kS、H.265 + AAC。*
+*ダッシュボードで設定したコールサインと周波数を重ねたニュートラルなテストカードを Pd4Pdx(Pluto + leandvb)で受信: 13 cm は 7 インチ画面(MER 23.4 dB)、6 cm は HDMI モニタ(MER 22.8 dB、VBER 0)。QPSK 3/4、333 kS、H.265 + AAC。*
 
 <p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="IPEX ケーブル付き ESP32-C5-Zero"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="6 cm を受信する Pd4Pdx と試験台"></p>
 
@@ -35,6 +34,10 @@
 ESP32-C5 の無線部には、Espressif が校正に使うサンプル再生エンジンがあります。その送信用コードはベンダーライブラリから削除されているため、レジスタは実験で見つけました。40 MS/s のサンプルバンク 2 つをピンポンで再生し、片方が送信中にもう片方へ CPU が RRC フィルタ済み QPSK を書き込みます。333 000 S/s ちょうどは分数アキュムレータで実現しています。BCH、LDPC、スクランブル、PL フレーム、TS 多重化はすべて、バンク切替の合間に 1 つのコアで処理されます。詳細と測定値: **[docs/MEASUREMENTS_ja.md](docs/MEASUREMENTS_ja.md)**。
 
 ## ハードウェア
+
+<p align="center"><img src="docs/img/esp32c5_zero_pinout.jpg" width="100%" alt="ESP32-C5-Zero のピン配置"></p>
+
+*ESP32-C5-Zero のピン配置(Waveshare ボード)。このファームウェアは GPIO26(アンテナ切替)、GPIO27(WS2812 LED)、GPIO28(BOOT)、GPIO10(STOP 入力)を使用。GPIO 0–10 と 23–25 でバンドリレーと PTT を駆動できます。*
 
 | 項目 | 備考 |
 |---|---|

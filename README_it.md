@@ -6,11 +6,10 @@
 
 Dashboard in 11 lingue · Licenza GPL-3.0
 
-| 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
-|---|---|
-| ![DVB-S2 a 2375 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 23,4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 a 5750 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+<table><tr><th width="50%">13 cm — 2375,000 MHz</th><th width="50%">6 cm — 5750,000 MHz</th></tr>
+<tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 a 2375 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 23,4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 a 5750 MHz con nominativo e frequenza in sovrimpressione, LOCK, MER 22,8 dB"></td></tr></table>
 
-*Monoscopio neutro con nominativo e frequenza impostati dalla dashboard. 13 cm ricevuti da un Portsdown 4 con Pluto (schermo 7", MER 23,4 dB), 6 cm dal Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Monoscopio neutro con nominativo e frequenza impostati dalla dashboard, ricevuto con il Pd4Pdx (Pluto + leandvb): 13 cm sullo schermo 7" (MER 23,4 dB), 6 cm sul monitor HDMI (MER 22,8 dB, VBER 0). QPSK 3/4, 333 kS, H.265 + AAC.*
 
 <p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero con cavo IPEX"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Banco di prova con il Pd4Pdx che riceve i 6 cm"></p>
 
@@ -35,6 +34,10 @@ Tutte le lingue: [DE](docs/img/dashboard_de.png) · [ES](docs/img/dashboard_es.p
 La radio della ESP32-C5 ha un motore interno che riproduce campioni (Espressif lo usa per le calibrazioni). Il suo codice di trasmissione non c'è più nelle librerie del costruttore, quindi i registri sono stati trovati per prova: due banchi di campioni a 40 MS/s suonati a ping-pong e riempiti dalla CPU con la QPSK filtrata RRC mentre l'altro banco è in onda, con 333 000 S/s esatti grazie a un accumulatore frazionario. BCH, LDPC, scrambling, trama PL e multiplexer del transport stream girano tutti sull'unico core negli intervalli tra uno scambio e l'altro. Dettagli e tutti i valori misurati: **[docs/MISURE_it.md](docs/MISURE_it.md)**.
 
 ## Hardware
+
+<p align="center"><img src="docs/img/esp32c5_zero_pinout.jpg" width="100%" alt="Piedinatura della ESP32-C5-Zero"></p>
+
+*Piedinatura della ESP32-C5-Zero (scheda Waveshare). Questo firmware usa GPIO26 (commutatore d'antenna), GPIO27 (LED WS2812), GPIO28 (BOOT) e GPIO10 (ingresso STOP); i GPIO 0–10 e 23–25 possono comandare relè di banda e PTT.*
 
 | Voce | Note |
 |---|---|

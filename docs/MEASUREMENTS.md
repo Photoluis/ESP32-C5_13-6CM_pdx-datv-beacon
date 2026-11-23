@@ -3,7 +3,7 @@
 [Italiano](MISURE_it.md) · [日本語](MEASUREMENTS_ja.md)
 
 Every number below was measured on real hardware during development (15–22 November 2026).
-Receivers: a Portsdown-style station with **ADALM-Pluto + leandvb** (DVB-S2 decoder) and a **MiniTiouner**.
+Receivers: the **Pd4Pdx** (ADALM-Pluto + leandvb DVB-S2 decoder; two units: main station and "Valigetta") and a **MiniTiouner**.
 Spectrum views: Pluto-based spectrum display, 10 MHz span. Levels are relative (Pluto dBFS), not calibrated.
 
 ## 1. Hardware under test
@@ -60,7 +60,7 @@ The vendor libraries of the C5 no longer contain the TX replay code (`dactrig` i
 | 21/11 12:22 | 2375 + 5750 | 333 kS | **beacon cycle** 13 → 6 cm | ~20 s | 23.3 dB (6 cm) | 600 + 600 frames, 0 DUMMY; 13 cm also on MiniTiouner |
 | 22/11 23:09 | 2375 MHz | 333 kS | beacon, +7 ppm | yes | 20.9 dB | offset **+7.5 kHz**, TS 450 kb/s, S/N 36.6 dB |
 | 22/11 23:11 | 5750 MHz | 333 kS | beacon, +7 ppm | yes | 20.8 dB | offset **+10.8 kHz**, TS 386 kb/s, S/N 35.7 dB |
-| 23/11 01:27 | 2375 MHz | 333 kS | **neutral test card, overlay** | yes | 23.4 dB | callsign and frequency from the dashboard; Portsdown 4 + Pluto (Valigetta), offset −13.8 kHz on its scale, TS 515 kb/s (picture `img/valigetta_touch_20261123_012733.jpg`) |
+| 23/11 01:27 | 2375 MHz | 333 kS | **neutral test card, overlay** | yes | 23.4 dB | callsign and frequency from the dashboard; Pd4Pdx "Valigetta" (Pluto, 7" screen), offset −13.8 kHz on its scale, TS 515 kb/s (picture `img/pd4pdx_7in_20261123_012733.jpg`) |
 | 23/11 01:22 | 5750 MHz | 333 kS | **neutral test card, overlay** | yes | 22.8 dB | Pd4Pdx, offset +10.2 kHz, TS 580 kb/s, VBER 0, S/N 32.7 dB (picture `img/pd4pdx_hdmi_20261123_012258.jpg`) |
 
 Exact symbol rates at 40 MS/s: 125 kS (16 × 20), 250 kS (16 × 10), 500 kS (16 × 5), 1000 kS (8 × 5); 333 kS uses the fractional accumulator.

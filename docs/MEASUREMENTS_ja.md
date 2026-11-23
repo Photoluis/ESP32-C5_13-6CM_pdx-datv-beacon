@@ -3,7 +3,7 @@
 [English](MEASUREMENTS.md) · [Italiano](MISURE_it.md)
 
 以下の数値はすべて開発中(2026年11月15〜22日)に実機で測定したものです。
-受信機: **ADALM-Pluto + leandvb**(DVB-S2 デコーダ)を使った Portsdown 系の局と **MiniTiouner**。
+受信機: **Pd4Pdx**(ADALM-Pluto + leandvb の DVB-S2 デコーダ。メイン局と「Valigetta」の 2 台)と **MiniTiouner**。
 スペクトラム: Pluto ベースの表示、スパン 10 MHz。レベルは相対値(Pluto の dBFS)で校正していません。
 
 ## 1. 試験したハードウェア
@@ -60,7 +60,7 @@ C5 用のベンダーライブラリには送信リプレイのコードが残�
 | 11/21 12:22 | 2375 + 5750 | 333 kS | **ビーコンサイクル** 13 → 6 cm | 約 20 秒 | 23.3 dB(6 cm) | 600 + 600 フレーム、DUMMY 0、13 cm は MiniTiouner でも受信 |
 | 11/22 23:09 | 2375 MHz | 333 kS | ビーコン、+7 ppm | あり | 20.9 dB | オフセット **+7.5 kHz**、TS 450 kb/s、S/N 36.6 dB |
 | 11/22 23:11 | 5750 MHz | 333 kS | ビーコン、+7 ppm | あり | 20.8 dB | オフセット **+10.8 kHz**、TS 386 kb/s、S/N 35.7 dB |
-| 11/23 01:27 | 2375 MHz | 333 kS | **ニュートラルなテストカード、重ね表示** | あり | 23.4 dB | コールサインと周波数はダッシュボードから。Portsdown 4 + Pluto(Valigetta)、そのスケールでオフセット −13.8 kHz、TS 515 kb/s(画像 `img/valigetta_touch_20261123_012733.jpg`) |
+| 11/23 01:27 | 2375 MHz | 333 kS | **ニュートラルなテストカード、重ね表示** | あり | 23.4 dB | コールサインと周波数はダッシュボードから。Pd4Pdx「Valigetta」(Pluto、7 インチ画面)、そのスケールでオフセット −13.8 kHz、TS 515 kb/s(画像 `img/pd4pdx_7in_20261123_012733.jpg`) |
 | 11/23 01:22 | 5750 MHz | 333 kS | **ニュートラルなテストカード、重ね表示** | あり | 22.8 dB | Pd4Pdx、オフセット +10.2 kHz、TS 580 kb/s、VBER 0、S/N 32.7 dB(画像 `img/pd4pdx_hdmi_20261123_012258.jpg`) |
 
 40 MS/s で正確な SR: 125 kS(16 × 20)、250 kS(16 × 10)、500 kS(16 × 5)、1000 kS(8 × 5)。333 kS は分数アキュムレータを使用。

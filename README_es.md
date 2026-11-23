@@ -6,11 +6,10 @@
 
 Panel en 11 idiomas · Licencia GPL-3.0
 
-| 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
-|---|---|
-| ![DVB-S2 a 2375 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 23,4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 a 5750 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+<table><tr><th width="50%">13 cm — 2375,000 MHz</th><th width="50%">6 cm — 5750,000 MHz</th></tr>
+<tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 a 2375 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 23,4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 a 5750 MHz con indicativo y frecuencia sobreimpresos, LOCK, MER 22,8 dB"></td></tr></table>
 
-*Carta de ajuste neutra con indicativo y frecuencia ajustados desde el panel. 13 cm recibidos por un Portsdown 4 con Pluto (pantalla de 7", MER 23,4 dB), 6 cm por el Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Carta de ajuste neutra con indicativo y frecuencia ajustados desde el panel, recibida con el Pd4Pdx (Pluto + leandvb): 13 cm en la pantalla de 7" (MER 23,4 dB), 6 cm en el monitor HDMI (MER 22,8 dB, VBER 0). QPSK 3/4, 333 kS, H.265 + AAC.*
 
 <p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero con cable IPEX"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Banco de pruebas con el Pd4Pdx recibiendo 6 cm"></p>
 
@@ -35,6 +34,10 @@ Todos los idiomas: [DE](docs/img/dashboard_de.png) · [FR](docs/img/dashboard_fr
 La radio del ESP32-C5 tiene un motor interno que reproduce muestras (Espressif lo usa para las calibraciones). Su código de transmisión ya no está en las bibliotecas del fabricante, así que los registros se encontraron por prueba: dos bancos de muestras a 40 MS/s reproducidos en ping-pong y rellenados por la CPU con QPSK filtrada RRC mientras el otro banco está en el aire, con 333 000 S/s exactos gracias a un acumulador fraccionario. BCH, LDPC, aleatorización, trama PL y multiplexor del transport stream se ejecutan en el único núcleo entre un cambio de banco y el siguiente. Detalles y todos los valores medidos: **[docs/MEASUREMENTS.md](docs/MEASUREMENTS.md)** (inglés).
 
 ## Hardware
+
+<p align="center"><img src="docs/img/esp32c5_zero_pinout.jpg" width="100%" alt="Patillaje del ESP32-C5-Zero"></p>
+
+*Patillaje del ESP32-C5-Zero (placa Waveshare). Este firmware usa GPIO26 (conmutador de antena), GPIO27 (LED WS2812), GPIO28 (BOOT) y GPIO10 (entrada STOP); los GPIO 0–10 y 23–25 pueden mandar relés de banda y PTT.*
 
 | Elemento | Notas |
 |---|---|

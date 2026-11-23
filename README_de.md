@@ -6,11 +6,10 @@
 
 Dashboard in 11 Sprachen · Lizenz GPL-3.0
 
-| 13 cm — 2375,000 MHz | 6 cm — 5750,000 MHz |
-|---|---|
-| ![DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 23,4 dB](docs/img/valigetta_touch_20261123_012733.jpg) | ![DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB](docs/img/pd4pdx_hdmi_20261123_012258.jpg) |
+<table><tr><th width="50%">13 cm — 2375,000 MHz</th><th width="50%">6 cm — 5750,000 MHz</th></tr>
+<tr><td><img src="docs/img/pd4pdx_7in_20261123_012733.jpg" width="100%" alt="DVB-S2 auf 2375 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 23,4 dB"></td><td><img src="docs/img/pd4pdx_hdmi_20261123_012258.jpg" width="100%" alt="DVB-S2 auf 5750 MHz mit eingeblendetem Rufzeichen und Frequenz, LOCK, MER 22,8 dB"></td></tr></table>
 
-*Neutrales Testbild mit Rufzeichen und Frequenz aus dem Dashboard. 13 cm empfangen mit einem Portsdown 4 mit Pluto (7"-Bildschirm, MER 23,4 dB), 6 cm mit dem Pd4Pdx (Pluto + leandvb, MER 22,8 dB, VBER 0): QPSK 3/4, 333 kS, H.265 + AAC.*
+*Neutrales Testbild mit Rufzeichen und Frequenz aus dem Dashboard, empfangen mit dem Pd4Pdx (Pluto + leandvb): 13 cm auf dem 7"-Bildschirm (MER 23,4 dB), 6 cm auf dem HDMI-Monitor (MER 22,8 dB, VBER 0). QPSK 3/4, 333 kS, H.265 + AAC.*
 
 <p align="center"><img src="docs/img/photo_esp32c5_zero_ipex.jpg" height="380" alt="ESP32-C5-Zero mit IPEX-Kabel"> <img src="docs/img/photo_bench_c5_6cm.jpg" height="380" alt="Messplatz mit dem Pd4Pdx beim Empfang auf 6 cm"></p>
 
@@ -35,6 +34,10 @@ Alle Sprachen: [ES](docs/img/dashboard_es.png) · [FR](docs/img/dashboard_fr.png
 Das Funkteil des ESP32-C5 besitzt eine interne Abspieleinheit für Abtastwerte (Espressif nutzt sie für Kalibrierungen). Der zugehörige Sendecode fehlt in den Herstellerbibliotheken, daher wurden die Register durch Versuche gefunden: zwei Abtastpuffer mit 40 MS/s werden im Ping-Pong abgespielt; die CPU füllt den freien Puffer mit RRC-gefilterter QPSK, während der andere sendet. Genau 333 000 S/s ergeben sich aus einem gebrochenen Akkumulator. BCH, LDPC, Verwürfelung, PL-Rahmen und Transportstrom-Multiplexer laufen alle auf dem einzigen Kern in den Lücken zwischen den Pufferwechseln. Details und alle Messwerte: **[docs/MEASUREMENTS.md](docs/MEASUREMENTS.md)** (Englisch).
 
 ## Hardware
+
+<p align="center"><img src="docs/img/esp32c5_zero_pinout.jpg" width="100%" alt="Pinbelegung des ESP32-C5-Zero"></p>
+
+*Pinbelegung des ESP32-C5-Zero (Waveshare-Platine). Diese Firmware nutzt GPIO26 (Antennenumschalter), GPIO27 (WS2812-LED), GPIO28 (BOOT) und GPIO10 (STOP-Eingang); GPIO 0–10 und 23–25 können Bandrelais und PTT schalten.*
 
 | Teil | Hinweise |
 |---|---|
