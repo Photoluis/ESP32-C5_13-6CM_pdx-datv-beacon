@@ -33,7 +33,7 @@
 #include "rf_c5.h"
 #include "chip_temp.h"
 
-#define FW_VERSION "C5-B5a-XC"
+#define FW_VERSION "C5-B5b-XCS2"
 
 static bool tx_armed;
 
@@ -273,7 +273,10 @@ void app_main(void)
             fflush(stdout);
             vTaskDelay(pdMS_TO_TICKS(50));
             pdx_stream_res_t r;
+            const int s2band = pdx_rf_mhz() > 4000u ? 1 : 0;   /* 23/11: antenna, GPIO e PTT della banda come la CW */
+            if (!dry) pdx_bcn_route(&bcfg, s2band, true);
             const char *e = pdx_rf_s2live(sr, amp, ms, lat, qinv, dry, &r);
+            if (!dry) pdx_bcn_route(&bcfg, s2band, false);
             if (e) { printf("ERR s2live %s\n", e); continue; }
             pdx_live_stats_t st;
             pdx_rf_live_stats(&st);
@@ -444,9 +447,16 @@ void app_main(void)
                 if (!strcmp(xs, "ON")) pdx_xc_set(true);
                 else if (!strcmp(xs, "OFF")) pdx_xc_set(false);
                 else if (!strcmp(xs, "REF") && sscanf(rest, "%*s %f", &v[0]) == 1) pdx_xc_set_ref(v[0]);
+                else if (!strcmp(xs, "S2")) {
+                    char o[4] = {0};
+                    sscanf(rest, "%*s %3s", o);
+                    pdx_xc_set_s2(o[0] == 'O' && o[1] == 'N' ? true : (o[0] == 'o' && o[1] == 'n'));
+                }
+                else if (!strcmp(xs, "TP") && sscanf(rest, "%*s %f %f %f %f", &v[0], &v[1], &v[2], &v[3]) == 4)
+                    pdx_xc_set_tpred(v[0], v[1], v[2], v[3]);
                 else if (!strcmp(xs, "K") && sscanf(rest, "%*s %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4]) == 5)
                     pdx_xc_set_k(v[0], v[1], v[2], v[3], v[4]);
-                else if (xs[0]) { printf("ERR uso: CW XC [ON|OFF|REF t|K c1 c2 c3 tau1 tau2]\n"); continue; }
+                else if (xs[0]) { printf("ERR uso: CW XC [ON|OFF|REF t|S2 ON|OFF|K c1 c2 c3 tau1 tau2|TP tinf ta tb w]\n"); continue; }
                 if (!pdx_rf_cw_active()) pdx_xc_update(pdx_temp_read());
                 pdx_xc_print();
             } else if (!strcmp(sub, "GUARD")) {

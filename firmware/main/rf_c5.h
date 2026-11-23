@@ -53,6 +53,9 @@ void pdx_xc_set(bool on);
 void pdx_xc_set_ref(float t);
 void pdx_xc_set_k(float c1, float c2, float c3, float tau1, float tau2);
 void pdx_xc_print(void);
+void pdx_xc_set_s2(bool on);                /* pre-centraggio all'inizio di ogni segmento DVB-S2 */
+void pdx_xc_set_tpred(float tinf, float ta, float tb, float w);
+void pdx_xc_print_segment(void);
 void pdx_rf_cw_set_guard(unsigned g);      /* 0 = no, 1 = ripristino se i registri cambiano, 2 = force_txon ogni 100 ms */
 void pdx_rf_cw_set_tlog(unsigned s);       /* temperatura nelle righe CWT ogni s secondi (0 = non leggere) */
 void pdx_rf_cw_retune(uint32_t khz);         /* durante la CW: nuova frequenza vera (prova del PLL in TX) */

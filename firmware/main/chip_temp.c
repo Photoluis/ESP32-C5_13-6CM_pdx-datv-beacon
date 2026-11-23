@@ -10,11 +10,21 @@ static bool hot;                       /* scala 20..100 C invece di -10..80 C */
 
 static void install(bool hi)
 {
-    if (tsens) { temperature_sensor_disable(tsens); temperature_sensor_uninstall(tsens); tsens = NULL; }
+    if (tsens) { temperature_sensor_uninstall(tsens); tsens = NULL; }
     const temperature_sensor_config_t c = hi ? (temperature_sensor_config_t)TEMPERATURE_SENSOR_CONFIG_DEFAULT(20, 100)
                                              : (temperature_sensor_config_t)TEMPERATURE_SENSOR_CONFIG_DEFAULT(-10, 80);
-    if (temperature_sensor_install(&c, &tsens) != ESP_OK || temperature_sensor_enable(tsens) != ESP_OK) tsens = NULL;
+    if (temperature_sensor_install(&c, &tsens) != ESP_OK) tsens = NULL;
     hot = hi;
+}
+
+/* 23/11 (C5): con il sensore sempre acceso il flusso DVB-S2 non parte (tutti gli intervalli in ritardo, 0 frame):
+ * acceso solo il tempo della lettura */
+static bool get(float *t)
+{
+    if (!tsens || temperature_sensor_enable(tsens) != ESP_OK) return false;
+    const bool ok = temperature_sensor_get_celsius(tsens, t) == ESP_OK;
+    temperature_sensor_disable(tsens);
+    return ok;
 }
 
 void pdx_temp_init(void)
@@ -28,10 +38,10 @@ void pdx_temp_init(void)
 float pdx_temp_read(void)
 {
     float t;
-    if (!tsens || temperature_sensor_get_celsius(tsens, &t) != ESP_OK) return NAN;
+    if (!get(&t)) return NAN;
     if ((!hot && t > 75.0f) || (hot && t < 25.0f)) {
         install(!hot);
-        if (!tsens || temperature_sensor_get_celsius(tsens, &t) != ESP_OK) return NAN;
+        if (!get(&t)) return NAN;
     }
     return t;
 }

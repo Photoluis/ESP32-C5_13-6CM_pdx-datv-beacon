@@ -117,6 +117,11 @@ static float xc_f1, xc_f2, xc_t;
 static int64_t xc_us;
 static bool xc_init;
 static int32_t xc_ppb;
+static int32_t xc_eval(float f1, float f2)
+{
+    const float a = f2 - 50.0f, r = xc_tref - 50.0f;
+    return (int32_t)lroundf(xc_c1 * (f1 - xc_tref) + xc_c2 * (f2 - xc_tref) + xc_c3 * (a * a - r * r));
+}
 
 void pdx_xc_update(float tc)
 {
@@ -130,8 +135,49 @@ void pdx_xc_update(float tc)
     }
     xc_us = now;
     xc_t = tc;
-    const float a = xc_f2 - 50.0f, r = xc_tref - 50.0f;
-    xc_ppb = (int32_t)lroundf(xc_c1 * (xc_f1 - xc_tref) + xc_c2 * (xc_f2 - xc_tref) + xc_c3 * (a * a - r * r));
+    xc_ppb = xc_eval(xc_f1, xc_f2);
+}
+
+/* DVB-S2: il segmento gira in sezione critica, il PLL non si può cambiare durante. Pre-centraggio: all'inizio
+ * (PA accesa) si prevede la temperatura del chip per tutto il segmento, T(t) = Tinf + (T0-Tinf)(w e^-t/ta +
+ * (1-w) e^-t/tb) (prove F e G: Tinf 74, ta 5 s, tb 150 s, w 0,35, resto 0,66 C), si fa passare il modello e si
+ * applica la correzione a metà tra minimo e massimo previsti: errore massimo = metà della deriva del segmento. */
+static bool xc_s2 = true;
+static float xc_tinf = 74.0f, xc_ta = 5.0f, xc_tb = 150.0f, xc_w = 0.35f;
+static int32_t xc_seg_lo, xc_seg_hi, xc_seg_ppb;
+static uint32_t xc_seg_pll;
+static float xc_seg_t0 = NAN;
+static int32_t xc_segment(float t0, float dur_s)
+{
+    float f1 = t0, f2 = t0;
+    const float k1 = 1.0f - expf(-1.0f / xc_tau1), k2 = 1.0f - expf(-1.0f / xc_tau2);
+    int32_t lo = INT32_MAX, hi = INT32_MIN;
+    for (unsigned s = 0; s <= (unsigned)dur_s; s++) {
+        const float t = (float)s;
+        const float T = xc_tinf + (t0 - xc_tinf) * (xc_w * expf(-t / xc_ta) + (1.0f - xc_w) * expf(-t / xc_tb));
+        if (s) { f1 += k1 * (T - f1); f2 += k2 * (T - f2); }
+        const int32_t e = xc_eval(f1, f2);
+        if (e < lo) lo = e;
+        if (e > hi) hi = e;
+    }
+    xc_seg_lo = lo;
+    xc_seg_hi = hi;
+    return (int32_t)(((int64_t)lo + hi) / 2);
+}
+void pdx_xc_set_s2(bool on) { xc_s2 = on; }
+void pdx_xc_set_tpred(float tinf, float ta, float tb, float w)
+{
+    xc_tinf = tinf;
+    xc_ta = ta < 0.1f ? 0.1f : ta;
+    xc_tb = tb < 0.1f ? 0.1f : tb;
+    xc_w = w < 0.0f ? 0.0f : w > 1.0f ? 1.0f : w;
+}
+void pdx_xc_print_segment(void)
+{
+    if (isnan(xc_seg_t0)) return;
+    printf("XC segmento: T0 %.1f C, deriva prevista %+" PRId32 "..%+" PRId32 " ppb, applicati %+" PRId32
+           " ppb, PLL %" PRIu32 " kHz\n", (double)xc_seg_t0, xc_seg_lo, xc_seg_hi, xc_seg_ppb, xc_seg_pll);
+    xc_seg_t0 = NAN;
 }
 int32_t pdx_xc_ppb(void) { return xc_ppb; }
 void pdx_xc_set(bool on) { xc_on = on; }
@@ -144,10 +190,11 @@ void pdx_xc_set_k(float c1, float c2, float c3, float tau1, float tau2)
 }
 void pdx_xc_print(void)
 {
-    printf("OK xc %s (%s) ppb %+" PRId32 " | T %.1f F1 %.1f F2 %.1f C | ref %.1f C | k %.2f %.2f %.3f tau %.1f %.1f s\n",
-           xc_on ? "ON" : "OFF", xc_apply ? "applicata" : "solo CW", xc_ppb, (double)xc_t, (double)xc_f1,
+    printf("OK xc %s (CW sempre, DVB-S2 %s) ppb %+" PRId32 " | T %.1f F1 %.1f F2 %.1f C | ref %.1f C | k %.2f %.2f %.3f"
+           " tau %.1f %.1f s | T prevista %.1f %.1f %.1f %.2f\n",
+           xc_on ? "ON" : "OFF", xc_s2 ? "pre-centrato" : "no", xc_ppb, (double)xc_t, (double)xc_f1,
            (double)xc_f2, (double)xc_tref, (double)xc_c1, (double)xc_c2, (double)xc_c3, (double)xc_tau1,
-           (double)xc_tau2);
+           (double)xc_tau2, (double)xc_tinf, (double)xc_ta, (double)xc_tb, (double)xc_w);
 }
 static uint32_t pll_khz_for(uint32_t khz)
 {
@@ -496,7 +543,10 @@ static bool cw_check(void)                           /* false = fermare */
         const float tc = (cw_tlog_s && (cw_nlog % cw_tlog_s) == 0) || xc_on ? pdx_temp_read() : NAN;
         cw_nlog++;
         pdx_xc_update(tc);
-        if (pll_khz_for(cur_khz) != prog_khz) pdx_rf_tune_khz(cur_khz);    /* ~1 ms, passo 1 kHz */
+        if (pll_khz_for(cur_khz) != prog_khz) {                         /* ~1 ms, passo 1 kHz */
+            pdx_rf_tune_khz(cur_khz);
+            if (cw_key_state || !cw_key_pa) tx_on();                   /* rx_idle() della sintonia spegne la TX */
+        }
         printf("CWT %lld s %.2f C PLL %" PRIu32 " kHz tasto %d ctrl %08" PRIx32 " d8 %08" PRIx32 " own %08" PRIx32
                " fix %" PRIu32 " xc %+" PRId32 " ppb F1 %.1f F2 %.1f\n", (long long)((now - cw_t0) / 1000000), (double)tc,
                prog_khz, cw_key_state ? 1 : 0, rd(PDX_C5_DUMP_BASE + 0x0Cu), rd(PDX_C5_DUMP_BASE + 8u),
@@ -517,6 +567,7 @@ static bool cw_check(void)                           /* false = fermare */
         cw_retune_khz = 0;
         const int64_t a = esp_timer_get_time();
         pdx_rf_tune_khz(k);
+        if (cw_key_state || !cw_key_pa) tx_on();
         printf("CW PLL %" PRIu32 " kHz in %lld us\n", prog_khz, (long long)(esp_timer_get_time() - a));
     }
     if (cw_stop_req) { cw_why = "CW OFF"; return false; }
@@ -597,6 +648,7 @@ static void cw_task_fn(void *arg)
     pdx_xc_update(pdx_temp_read());
     xc_apply = true;
     pdx_rf_tune_khz(cur_khz);
+    tx_on();
     if (cw_key_pa && j->text[0]) tx_off();
     if (!j->text[0]) {                                /* portante fissa */
         cw_key(true);
@@ -1056,6 +1108,20 @@ static void stream_run(const pp_req_t *q)
     const uint32_t intervals = (uint32_t)((uint64_t)q->ms * 40000u / n);
     tx_on();
     esp_rom_delay_us(3000);
+    if (stream_kind == 3 && xc_on && xc_s2) {                      /* pre-centraggio termico del segmento */
+        const float t0 = pdx_temp_read();
+        if (!isnan(t0)) {
+            xc_t = t0;
+            xc_seg_t0 = t0;
+            xc_ppb = xc_seg_ppb = xc_segment(t0, (float)q->ms * 1e-3f);
+            xc_apply = true;
+            pdx_rf_tune_khz(cur_khz);                               /* ~1 ms, prima di far partire il DAC */
+            xc_apply = false;
+            xc_seg_pll = prog_khz;
+            tx_on();                                                /* la sintonia passa da rx_idle(): TX di nuovo */
+            esp_rom_delay_us(3000);
+        }
+    }
     static portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
     taskENTER_CRITICAL(&mux);
     wr(PDX_C5_SRAM_OWNER, oa);
@@ -1514,6 +1580,7 @@ const char *pdx_rf_s2live(uint32_t sr, int amp, unsigned ms, uint32_t lat, unsig
     esp_wifi_set_promiscuous(true);
     stream_kind = 0;
     tx_dry = false;
+    pdx_xc_print_segment();
     return NULL;
 }
 

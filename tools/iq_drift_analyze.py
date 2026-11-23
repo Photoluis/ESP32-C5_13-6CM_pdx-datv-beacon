@@ -12,7 +12,7 @@ import re
 import numpy as np
 
 
-def peak(path, fs, fmin, fmax):
+def peak(path, fs, fmin, fmax, wide=False):
     raw = np.fromfile(path, dtype="<i2").astype(np.float32)
     if raw.size < 2048:
         return None
@@ -23,6 +23,10 @@ def peak(path, fs, fmin, fmax):
     f = np.fft.fftshift(np.fft.fftfreq(n, 1 / fs))
     noise = np.median(s)
     s[(f < fmin) | (f > fmax)] = 1e-9  # cerca solo dove può stare la portante (fuori dal DC della Pluto)
+    if wide:                           # segnale largo (DVB-S2): baricentro della potenza sopra il rumore in [fmin, fmax]
+        m = (f >= fmin) & (f <= fmax)
+        p = np.clip(s[m] - noise, 0, None)
+        return float(np.sum(f[m] * p) / np.sum(p)), 10 * np.log10(np.mean(s[m]) / noise)
     k = int(np.argmax(s))
     a, b, c = np.log(s[k - 1]), np.log(s[k]), np.log(s[k + 1])
     d = 0.5 * (a - c) / (a - 2 * b + c)
@@ -39,6 +43,7 @@ def main():
     ap.add_argument("--fmin", type=float, default=20e3, help="Hz dal LO")
     ap.add_argument("--fmax", type=float, default=400e3)
     ap.add_argument("--snr", type=float, default=25.0, help="sotto questo S/N la cattura non ha portante")
+    ap.add_argument("--wide", action="store_true", help="DVB-S2: baricentro tra fmin e fmax (finestra solo sul segnale)")
     ap.add_argument("--out")
     a = ap.parse_args()
     temps = []
@@ -49,7 +54,7 @@ def main():
                 temps.append((float(m.group(1)), int(m.group(2)), float(m.group(3))))
     rows = []
     for p in sorted(glob.glob(os.path.join(a.dir, "*.bin"))):
-        r = peak(p, a.fs, a.fmin, a.fmax)
+        r = peak(p, a.fs, a.fmin, a.fmax, a.wide)
         if r:
             rows.append((float(os.path.basename(p)[:-4]), r[0], r[1]))
     on = [r for r in rows if r[2] >= a.snr]
