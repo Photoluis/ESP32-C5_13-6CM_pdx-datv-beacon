@@ -435,7 +435,7 @@ static unsigned cw_tlog_s = 1;                      /* lettura della temperatura
 static uint32_t cw_nlog;
 /* 23/11: la portante si spegneva dopo ~40 s con la C5 convinta di trasmettere. Guardiano: 0 = spento,
  * 1 = rimette TX e replay se i registri del DAC cambiano, 2 = rimette force_txon ogni 100 ms comunque */
-static unsigned cw_guard = 1;
+static unsigned cw_guard = 2;                       /* 23/11 prova D: con 2 la portante resta oltre 64 C (120 s) */
 static uint32_t cw_fix, cw_next_guard_ms;              /* CW FREQK durante la portante (prova del cambio di PLL in TX) */
 static bool cw_check(void)                           /* false = fermare */
 {
