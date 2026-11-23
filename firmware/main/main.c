@@ -31,8 +31,9 @@
 #include "web_c5.h"
 #include "led_status.h"
 #include "rf_c5.h"
+#include "chip_temp.h"
 
-#define FW_VERSION "C5-B4-CW"
+#define FW_VERSION "C5-B4c-CWT"
 
 static bool tx_armed;
 
@@ -63,7 +64,8 @@ static void cmd_info(void)
            (void *)&_iram_end, (void *)&_data_end, (void *)&_bss_end);
     printf("SRAM_OWNER 0x%08" PRIx32 "\n", rd(PDX_C5_SRAM_OWNER));
     for (uint32_t o = 0; o <= 0x1C; o += 4) printf("DUMP+%02" PRIx32 " 0x%08" PRIx32 "\n", o, rd(PDX_C5_DUMP_BASE + o));
-    printf("FREQ %u MHz  PLL %" PRIu32 " kHz  ANT(GPIO26) %d\n", pdx_rf_mhz(), pdx_rf_prog_khz(), gpio_get_level(PDX_C5_ANT_GPIO));
+    printf("FREQ %u MHz  PLL %" PRIu32 " kHz  ANT(GPIO26) %d  TEMP %.2f C\n", pdx_rf_mhz(), pdx_rf_prog_khz(),
+           gpio_get_level(PDX_C5_ANT_GPIO), (double)pdx_temp_read());
     printf("OK info\n");
 }
 
@@ -124,6 +126,7 @@ void app_main(void)
     if (pdx_rf_init() != ESP_OK) printf("ATTENZIONE: radio non inizializzata, solo comandi di servizio\n");
     pdx_rf_pp_init();
     pdx_led_init();                          /* giallo fisso: in attesa */
+    pdx_temp_init();
 
     /* B1: beacon autonomo. Doppia accensione (spegnere e riaccendere entro 5 s) = modo configurazione, niente TX */
     static pdx_bcn_cfg_t bcfg;
@@ -433,6 +436,13 @@ void app_main(void)
             } else if (!strcmp(sub, "AMP")) {
                 pdx_rf_cw_set_amp(atoi(rest));
                 printf("OK cw amp %d (%.1f dB)\n", pdx_rf_cw_amp(), 20.0 * log10(pdx_rf_cw_amp() / 480.0));
+            } else if (!strcmp(sub, "TLOG")) {
+                pdx_rf_cw_set_tlog((unsigned)atoi(rest));
+                printf("OK cw tlog %d\n", atoi(rest));
+            } else if (!strcmp(sub, "FREQK")) {         /* durante la CW: cambio del PLL in trasmissione */
+                if (!pdx_rf_cw_active()) { printf("ERR solo durante la CW\n"); continue; }
+                pdx_rf_cw_retune((uint32_t)strtoul(rest, NULL, 10));
+                printf("OK cw freqk %s\n", rest);
             } else if (!strcmp(sub, "KEY") && pdx_rf_cw_active()) {
                 printf("ERR cw in corso: CW OFF prima\n");
             } else if (!strcmp(sub, "KEY")) {

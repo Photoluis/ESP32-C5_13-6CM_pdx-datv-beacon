@@ -46,6 +46,8 @@ void pdx_rf_dac_pattern(uint32_t off, uint32_t val, int amp, unsigned n, int k, 
 typedef struct { unsigned max_s, wpm, pause_s, carrier_s, dry; char text[48]; } pdx_cw_job_t;   /* dry: motore senza RF */
 const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why));   /* NULL = partito */
 void pdx_rf_cw_stop(void);
+void pdx_rf_cw_set_tlog(unsigned s);       /* temperatura nelle righe CWT ogni s secondi (0 = non leggere) */
+void pdx_rf_cw_retune(uint32_t khz);         /* durante la CW: nuova frequenza vera (prova del PLL in TX) */
 bool pdx_rf_cw_active(void);
 void pdx_rf_cw_set_amp(int amp);           /* livello del DAC 1..480 (predefinito 300) */
 int pdx_rf_cw_amp(void);

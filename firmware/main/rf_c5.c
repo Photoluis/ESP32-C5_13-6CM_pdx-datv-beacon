@@ -7,6 +7,7 @@
  * Codice scritto da zero.
  */
 #include "rf_c5.h"
+#include "chip_temp.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -428,9 +429,27 @@ static void cw_key(bool on)
 }
 
 static const char *cw_why;
-static int64_t cw_deadline;
+static int64_t cw_deadline, cw_t0, cw_next_log;
+static volatile uint32_t cw_retune_khz;
+static unsigned cw_tlog_s = 1;                      /* lettura della temperatura ogni n s (0 = mai) */
+static uint32_t cw_nlog;              /* CW FREQK durante la portante (prova del cambio di PLL in TX) */
 static bool cw_check(void)                           /* false = fermare */
 {
+    const int64_t now = esp_timer_get_time();
+    if (now >= cw_next_log) {                        /* registro al secondo: tempo, temperatura del chip, PLL */
+        cw_next_log += 1000000;
+        const float tc = cw_tlog_s && (cw_nlog % cw_tlog_s) == 0 ? pdx_temp_read() : NAN;
+        cw_nlog++;
+        printf("CWT %lld s %.2f C PLL %" PRIu32 " kHz tasto %d\n", (long long)((now - cw_t0) / 1000000), (double)tc,
+               prog_khz, cw_key_state ? 1 : 0);
+    }
+    if (cw_retune_khz) {
+        const uint32_t k = cw_retune_khz;
+        cw_retune_khz = 0;
+        const int64_t a = esp_timer_get_time();
+        pdx_rf_tune_khz(k);
+        printf("CW PLL %" PRIu32 " kHz in %lld us\n", prog_khz, (long long)(esp_timer_get_time() - a));
+    }
     if (cw_stop_req) { cw_why = "CW OFF"; return false; }
     if (~REG_READ(GPIO_IN_REG) & stop_mask) { cw_why = "BOOT o GPIO STOP"; return false; }
     if (esp_timer_get_time() > cw_deadline) { cw_why = "tempo massimo"; return false; }
@@ -496,6 +515,9 @@ static void cw_task_fn(void *arg)
     cw_owner0 = rd(PDX_C5_SRAM_OWNER);
     cw_ctrl0 = rd(PDX_C5_DUMP_BASE + 0x0Cu);
     cw_key_state = false;
+    cw_t0 = esp_timer_get_time();
+    cw_next_log = cw_t0;
+    cw_nlog = 0;
     tx_dry = j->dry != 0;
     tx_on();                                          /* PA accesa (anche con la manipolazione PA: poi segue il tasto) */
     esp_rom_delay_us(3000);
@@ -534,6 +556,8 @@ void pdx_rf_cw_set_key_pa(bool pa) { cw_key_pa = pa; }
 bool pdx_rf_cw_key_pa(void) { return cw_key_pa; }
 bool pdx_rf_cw_active(void) { return cw_running; }
 void pdx_rf_cw_stop(void) { cw_stop_req = true; }
+void pdx_rf_cw_retune(uint32_t khz) { cw_retune_khz = khz; }
+void pdx_rf_cw_set_tlog(unsigned s) { cw_tlog_s = s; }
 
 const char *pdx_rf_cw_start(const pdx_cw_job_t *job, void (*done)(const char *why))
 {
