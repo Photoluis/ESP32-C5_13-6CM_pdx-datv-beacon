@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-Il beacon ha bisogno anche del monoscopio neutro in flash a `0x290000` (un solo file per le due bande, circa 760 KB). Si genera sul PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 e il font libero DejaVu); nominativo e frequenza **non** sono nel file: li sovrimprime la C5 dalle impostazioni della dashboard.
+Il beacon ha bisogno anche del monoscopio neutro in flash a `0x290000` (un solo file per le due bande, circa 700 KB). Si genera sul PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 e il font libero DejaVu); nominativo e frequenza **non** sono nel file: li sovrimprime la C5 dalle impostazioni della dashboard.
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**Monoscopio personale:** al posto delle barre si può usare una propria immagine (`--image`, adattata a 640x360) o un breve video (`--video`, ripetuto o tagliato a 19,2 s × `--loops`), con il suo audio (`--audio`, altrimenti un tono da 1 kHz). La striscia del nominativo è scurita al 50 %, così l'immagine resta visibile dietro; quella della frequenza è piena. Con un video la zona delle strisce resta ferma sul primo fotogramma. `--preview` compone le strisce come la C5 e decodifica il risultato per controllo. Il file va a `0x290000` come quello standard (massimo 1,4 MB).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## Primo utilizzo

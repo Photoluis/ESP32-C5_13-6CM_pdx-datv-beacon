@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-O farol precisa também do padrão de teste neutro na flash em `0x290000` (um só ficheiro para as duas bandas, cerca de 760 KB). É gerado no PC com `tools/monoscope/make_es_c5.py` (ffmpeg com libx265 e a fonte livre DejaVu); o indicativo e a frequência **não** estão no ficheiro: o C5 sobrepõe-nos a partir das definições do painel.
+O farol precisa também do padrão de teste neutro na flash em `0x290000` (um só ficheiro para as duas bandas, cerca de 700 KB). É gerado no PC com `tools/monoscope/make_es_c5.py` (ffmpeg com libx265 e a fonte livre DejaVu); o indicativo e a frequência **não** estão no ficheiro: o C5 sobrepõe-nos a partir das definições do painel.
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**Padrão de teste pessoal:** em vez das barras pode usar uma imagem própria (`--image`, adaptada a 640x360) ou um vídeo curto (`--video`, repetido ou cortado a 19,2 s × `--loops`), com o seu áudio (`--audio`, caso contrário um tom de 1 kHz). A faixa do indicativo é escurecida a 50 % para que a imagem continue visível por trás; a da frequência é opaca. Com um vídeo a zona das faixas fica parada no primeiro fotograma. `--preview` compõe as faixas como a C5 e descodifica o resultado para verificação. O ficheiro vai para `0x290000` como o padrão (máximo 1,4 MB).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## Primeira utilização

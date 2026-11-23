@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-Die Bake braucht außerdem das neutrale Testbild im Flash bei `0x290000` (eine Datei für beide Bänder, etwa 760 KB). Es wird am PC mit `tools/monoscope/make_es_c5.py` erzeugt (ffmpeg mit libx265 und die freie Schrift DejaVu); Rufzeichen und Frequenz stehen **nicht** in der Datei: der C5 blendet sie aus den Dashboard-Einstellungen ein.
+Die Bake braucht außerdem das neutrale Testbild im Flash bei `0x290000` (eine Datei für beide Bänder, etwa 700 KB). Es wird am PC mit `tools/monoscope/make_es_c5.py` erzeugt (ffmpeg mit libx265 und die freie Schrift DejaVu); Rufzeichen und Frequenz stehen **nicht** in der Datei: der C5 blendet sie aus den Dashboard-Einstellungen ein.
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**Eigenes Testbild:** statt der Balken lässt sich ein eigenes Bild (`--image`, auf 640x360 skaliert) oder ein kurzes Video (`--video`, wiederholt oder auf 19,2 s × `--loops` gekürzt) mit eigenem Ton (`--audio`, sonst ein 1-kHz-Ton) verwenden. Der Rufzeichenstreifen wird zu 50 % abgedunkelt, damit das Bild dahinter sichtbar bleibt; der Frequenzstreifen ist deckend. Bei einem Video bleibt der Streifenbereich auf dem ersten Bild stehen. `--preview` setzt die Streifen wie die C5 zusammen und dekodiert das Ergebnis zur Kontrolle. Die Datei kommt wie die Standarddatei nach `0x290000` (höchstens 1,4 MB).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## Erste Inbetriebnahme

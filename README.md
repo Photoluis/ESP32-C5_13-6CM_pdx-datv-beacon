@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-The beacon also needs the neutral test card in flash at `0x290000` (one file for both bands, about 760 KB). It is generated on the PC with `tools/monoscope/make_es_c5.py` (ffmpeg with libx265 and the free DejaVu font); the callsign and the frequency are **not** in the file: the C5 overlays them from the dashboard settings.
+The beacon also needs the neutral test card in flash at `0x290000` (one file for both bands, about 700 KB). It is generated on the PC with `tools/monoscope/make_es_c5.py` (ffmpeg with libx265 and the free DejaVu font); the callsign and the frequency are **not** in the file: the C5 overlays them from the dashboard settings.
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**Personal test card:** instead of the bars you can use your own picture (`--image`, scaled to 640x360) or a short video (`--video`, repeated or cut to 19.2 s × `--loops`), with its own audio (`--audio`, otherwise a 1 kHz tone). The callsign strip is darkened to 50 % so the picture stays visible behind it; the frequency strip is solid. With a video, the strip area is frozen on the first frame. `--preview` composes the strips like the C5 and decodes the result for a check. The file goes to `0x290000` like the standard one (maximum 1.4 MB).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## First use

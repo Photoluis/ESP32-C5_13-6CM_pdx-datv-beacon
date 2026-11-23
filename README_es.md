@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-La baliza necesita además la carta de ajuste neutra en la flash en `0x290000` (un solo archivo para las dos bandas, unos 760 KB). Se genera en el PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 y la fuente libre DejaVu); el indicativo y la frecuencia **no** están en el archivo: los sobreimprime el C5 desde los ajustes del panel.
+La baliza necesita además la carta de ajuste neutra en la flash en `0x290000` (un solo archivo para las dos bandas, unos 700 KB). Se genera en el PC con `tools/monoscope/make_es_c5.py` (ffmpeg con libx265 y la fuente libre DejaVu); el indicativo y la frecuencia **no** están en el archivo: los sobreimprime el C5 desde los ajustes del panel.
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**Carta de ajuste personal:** en lugar de las barras se puede usar una imagen propia (`--image`, adaptada a 640x360) o un vídeo corto (`--video`, repetido o recortado a 19,2 s × `--loops`), con su audio (`--audio`, si no un tono de 1 kHz). La franja del indicativo se oscurece al 50 % para que la imagen se vea detrás; la de la frecuencia es opaca. Con un vídeo la zona de las franjas queda fija en el primer fotograma. `--preview` compone las franjas como la C5 y decodifica el resultado para comprobarlo. El archivo va en `0x290000` como el estándar (máximo 1,4 MB).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## Primer uso

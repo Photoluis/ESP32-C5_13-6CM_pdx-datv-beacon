@@ -59,12 +59,20 @@ idf.py build
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin 0x10000 build/pdx_c5_probe.bin
 ```
 
-ビーコンには、フラッシュの `0x290000` にニュートラルなテストカード(両バンド共通の 1 ファイル、約 760 KB)が必要です。PC 上で `tools/monoscope/make_es_c5.py`(libx265 付き ffmpeg と無料の DejaVu フォント)で作成します。コールサインと周波数はファイルに**含まれず**、C5 がダッシュボードの設定から重ねて表示します。
+ビーコンには、フラッシュの `0x290000` にニュートラルなテストカード(両バンド共通の 1 ファイル、約 700 KB)が必要です。PC 上で `tools/monoscope/make_es_c5.py`(libx265 付き ffmpeg と無料の DejaVu フォント)で作成します。コールサインと周波数はファイルに**含まれず**、C5 がダッシュボードの設定から重ねて表示します。
 
 ```
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**独自のテストカード:** バーの代わりに自分の画像(`--image`、640x360 に変換)や短い動画(`--video`、19.2 秒 × `--loops` に合わせて繰り返し/切り詰め)と、その音声(`--audio`、指定しなければ 1 kHz トーン)を使えます。コールサインの帯は 50 % の暗さで、背後の画像が透けて見えます。周波数の帯は不透明です。動画の場合、帯の部分は最初のフレームで固定されます。`--preview` は C5 と同じ方法で帯を合成し、確認のためにデコードします。ファイルは標準のものと同じく `0x290000` に書き込みます(最大 1.4 MB)。
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 ## 初回の使い方

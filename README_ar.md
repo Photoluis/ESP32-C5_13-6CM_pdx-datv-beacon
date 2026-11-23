@@ -65,7 +65,7 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 
 <div dir="rtl">
 
-تحتاج المنارة أيضًا إلى صورة الاختبار المحايدة في الفلاش عند `0x290000` (ملف واحد للنطاقين، نحو 760 KB). تُولَّد على الحاسوب بالأداة `tools/monoscope/make_es_c5.py` (ffmpeg مع libx265 والخط المجاني DejaVu)؛ النداء المميز والتردد **ليسا** في الملف: تضيفهما C5 فوق الصورة من إعدادات لوحة التحكم.
+تحتاج المنارة أيضًا إلى صورة الاختبار المحايدة في الفلاش عند `0x290000` (ملف واحد للنطاقين، نحو 700 KB). تُولَّد على الحاسوب بالأداة `tools/monoscope/make_es_c5.py` (ffmpeg مع libx265 والخط المجاني DejaVu)؛ النداء المميز والتردد **ليسا** في الملف: تضيفهما C5 فوق الصورة من إعدادات لوحة التحكم.
 
 </div>
 
@@ -73,6 +73,14 @@ esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x2000 build/bootloader
 cd tools/monoscope
 python make_es_c5.py -o ../out/c5_mono_es_neutral.bin
 esptool --chip esp32c5 --port COMx -b 921600 write-flash 0x290000 ../out/c5_mono_es_neutral.bin
+```
+
+**صورة اختبار شخصية:** بدلاً من الأشرطة يمكن استخدام صورة خاصة (`--image`، تُضبط على 640x360) أو مقطع فيديو قصير (`--video`، يُكرَّر أو يُقص إلى 19.2 ث × `--loops`) مع صوته (`--audio`، وإلا فنغمة 1 kHz). يُعتَّم شريط النداء المميز بنسبة 50 % لتبقى الصورة ظاهرة خلفه، أما شريط التردد فمُعتم بالكامل. مع الفيديو تبقى منطقة الأشرطة ثابتة على الإطار الأول. يركّب `--preview` الأشرطة كما تفعل C5 ويفك ترميز النتيجة للتحقق. يُكتب الملف في `0x290000` مثل الملف القياسي (1.4 MB كحد أقصى).
+
+```
+python make_es_c5.py --image my_card.jpg -o ../out/my_card.bin
+python make_es_c5.py --video clip.mp4 --audio clip.mp4 --loops 1 -o ../out/my_clip.bin
+python make_es_c5.py --image my_card.jpg --preview "IZ7PDX/B" "2375.000 MHz" -o ../out/my_card.bin
 ```
 
 <div dir="rtl">
