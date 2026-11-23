@@ -143,7 +143,10 @@ def video_graph(td: Path, a, loop_s: float) -> str:
 def make_template_ts(td: Path, a, loop_s: float, path: Path, bg_png: Path):
     rate = ts_bitrate(a.sr)
     audio_k = 32
-    video_k = int(rate * 0.80 / 1000) - audio_k
+    if rate < 400000:   # TS lento del firmware: PSI/PCR ~23 kbit/s, audio a 5 frame per PES ~29 kbit/s nel TS
+        video_k = max(16, int(rate * 0.88 / 1000) - 60)
+    else:               # PSI/PCR ~69 kbit/s, audio un frame per PES ~71 kbit/s
+        video_k = int(rate * 0.80 / 1000) - audio_k
     graph = video_graph(td, a, loop_s)
     src = source_args(a)
     # sfondo delle strisce per i caratteri: primo fotogramma prima della codifica

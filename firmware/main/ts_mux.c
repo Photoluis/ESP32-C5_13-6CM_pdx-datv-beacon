@@ -262,12 +262,30 @@ static void pes_packet(pdx_mux_t *m, pdx_es_cursor_t *c, uint16_t pid, uint8_t *
     if (c->pl_rem == 0) c->active = false;
 }
 
+/* TS lento (23/11): fino a PDX_SEG_MAX frame AAC in un PES (lo standard lo consente; PTS del primo). Con un frame per
+ * PES l'audio da 32 kbit/s occupava 47 pacchetti/s = 71 kbit/s del TS (a 125 kS restavano ~35 kbit/s al video). */
+static void group_audio(pdx_mux_t *m, pdx_es_cursor_t *c)
+{
+    uint32_t total = c->pl_rem;
+    while (c->nseg < PDX_SEG_MAX) {
+        const pdx_es_unit_t *u = peek(c, 1);
+        if (!u || unit_pts(m, c, u) > now_90k(m) + LEAD_90K + 10800u) break;   /* +120 ms: altrimenti il frame dopo è sempre "presto" */
+        c->seg[c->nseg++] = (pdx_seg_t){c->data + m->es->data_off + u->off, u->len};
+        total += u->len;
+        c->next++;
+    }
+    c->pl_rem = total;
+    c->ph[4] = (uint8_t)((total + 8u) >> 8);
+    c->ph[5] = (uint8_t)(total + 8u);
+}
+
 static bool try_stream(pdx_mux_t *m, pdx_es_cursor_t *c, uint8_t kind, uint16_t pid, uint8_t *cc, uint8_t *p)
 {
     if (!c->active) {
         const pdx_es_unit_t *u = peek(c, kind);
         if (!u || unit_pts(m, c, u) > now_90k(m) + LEAD_90K) return false;
         start_pes(m, c, u, kind == 0);
+        if (kind == 1 && m->lowrate) group_audio(m, c);
     }
     pes_packet(m, c, pid, cc, p);
     return true;
@@ -332,8 +350,9 @@ const char *pdx_mux_init(pdx_mux_t *m, const uint8_t *es_file, double rate, cons
     m->es = h;
     m->rate = rate;
     m->vqueue = vqueue;
-    /* sotto 150 kbit/s (SR sotto 100 kS) PAT/PMT ogni 100 ms e PCR ogni 40 ms prenderebbero quasi tutto il TS */
-    m->lowrate = rate < 150000.0;
+    /* TS lento (PAT/PMT ogni 0,5 s, PCR ogni 100 ms, audio raggruppato): sotto 400 kbit/s, cioè sotto 333 kS (23/11: a
+     * 125 kS PAT/PMT ogni 100 ms e PCR ogni 40 ms erano 46 pacchetti/s su 120). 333 kS e oltre: invariato. */
+    m->lowrate = rate < 400000.0;
     m->vtype = vqueue ? 0x1B : (uint8_t)h->vtype;
     m->vpid = m->vtype == 0x24 ? PID_V : PID_V264;
     if (last.valid) {                                      /* prosegue dal segmento precedente, più la pausa reale */
